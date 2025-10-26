@@ -1,6 +1,6 @@
 // src/pages/MealPlanner.jsx
 import React, { useState, useEffect, useCallback } from "react";
-import axios from "../api/http.js";
+import { api } from "../lib/axios"; // 🔁 use same axios instance as Users/AddOrder
 
 /* ---------------- date helpers ---------------- */
 function getTomorrowYMD() {
@@ -30,33 +30,33 @@ function formatHumanDate(ymd) {
   return `${weekday}, ${day} ${mon} ${yy}`;
 }
 
+// helper to format Date -> yyyy-mm-dd
+function formatYMD(dateObj) {
+  const yyyy = dateObj.getFullYear();
+  const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const dd = String(dateObj.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 /* ---------------- component ---------------- */
 export default function MealPlanner() {
-  /* modal / form state */
   const [showModal, setShowModal] = useState(false);
-
-  // "create" | "edit"
-  const [mode, setMode] = useState("create");
-
-  // this is the date string currently being edited or created (yyyy-mm-dd)
+  const [mode, setMode] = useState("create"); // "create" | "edit"
   const [selectedDate, setSelectedDate] = useState(getTomorrowYMD());
 
-  // meals & dishes master data
-  const [meals, setMeals] = useState([]); // /api/meals
+  // master data
+  const [meals, setMeals] = useState([]);   // /api/meals
   const [dishes, setDishes] = useState([]); // /api/dishes
-
-  // mealId -> [dishId,...] (current working selection in modal)
-  const [selectedMealDishes, setSelectedMealDishes] = useState({});
-
-  // list of all saved plans
   const [mealPlans, setMealPlans] = useState([]); // /api/meal-plan
+
+  // mealId -> [dishId,...]
+  const [selectedMealDishes, setSelectedMealDishes] = useState({});
 
   // loading states
   const [loadingMeals, setLoadingMeals] = useState(false);
   const [loadingDishes, setLoadingDishes] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(false);
 
-  // statuses / messages
   const [errorMsg, setErrorMsg] = useState("");
   const [searchText, setSearchText] = useState("");
 
@@ -65,9 +65,7 @@ export default function MealPlanner() {
 
   const mealsLoadedOutside = meals.length > 0;
 
-  /* ---------------- helpers for lookups ---------------- */
-
-  // meal lookup maps
+  // lookup maps
   const mealTitleMap = {};
   meals.forEach((m) => {
     mealTitleMap[m._id] = m.meal_title || "Untitled Meal";
@@ -78,19 +76,17 @@ export default function MealPlanner() {
     dishMap[d._id] = d;
   });
 
-  // all dates already having a plan (for duplicate prevention in "create" mode)
   const takenDates = mealPlans.map((p) => p.date); // ["2025-10-26","2025-10-27",...]
 
-  /* ---------------- fetch all plans (table data) ---------------- */
-
+  /* ---------------- fetch all plans ---------------- */
   const fetchMealPlans = useCallback(async () => {
     try {
       setLoadingPlans(true);
 
       const [plansRes, mealsRes, dishesRes] = await Promise.all([
-        axios.get("/api/meal-plan"),
-        axios.get("/api/meals"),
-        axios.get("/api/dishes"),
+        api.get("/api/meal-plan"),
+        api.get("/api/meals"),
+        api.get("/api/dishes"),
       ]);
 
       const planArr =
@@ -102,7 +98,6 @@ export default function MealPlanner() {
       setMeals(mealArr);
       setDishes(dishArr);
 
-      // ensure keys in selectedMealDishes exist so modal checkboxes won't blow up
       setSelectedMealDishes((prev) => {
         const copy = { ...prev };
         mealArr.forEach((m) => {
@@ -122,33 +117,29 @@ export default function MealPlanner() {
   }, [fetchMealPlans]);
 
   /* ---------------- open modal in ADD mode ---------------- */
-
   const handleAddClick = async () => {
     setMode("create");
     setErrorMsg("");
     setSaveStatus("");
     setSearchText("");
 
-    // pick default date = tomorrow, BUT if tomorrow is already taken, pick the next free day after tomorrow
+    // pick default date = tomorrow, but skip already-taken dates
     let base = getTomorrowYMD();
     let probe = new Date(base);
-    // ensure probe is a real Date (not string)
     if (typeof probe === "string") probe = new Date(base);
     while (takenDates.includes(formatYMD(probe))) {
       probe.setDate(probe.getDate() + 1);
     }
     const picked = formatYMD(probe);
-
     setSelectedDate(picked);
 
-    // preload meals+dishes fresh (so we have latest list)
     try {
       setLoadingMeals(true);
       setLoadingDishes(true);
 
       const [mealsRes, dishesRes] = await Promise.all([
-        axios.get("/api/meals"),
-        axios.get("/api/dishes"),
+        api.get("/api/meals"),
+        api.get("/api/dishes"),
       ]);
 
       const mealArr = Array.isArray(mealsRes.data) ? mealsRes.data : [];
@@ -157,7 +148,6 @@ export default function MealPlanner() {
       setMeals(mealArr);
       setDishes(dishArr);
 
-      // initialize empty selections for new plan
       const selObj = {};
       mealArr.forEach((m) => {
         selObj[m._id] = [];
@@ -168,41 +158,29 @@ export default function MealPlanner() {
     } catch (err) {
       console.error("Failed to load meals/dishes for popup", err);
       setErrorMsg("Couldn't load meals or dishes. Please try again.");
-      setShowModal(true); // still show modal so user sees the error
+      setShowModal(true);
     } finally {
       setLoadingMeals(false);
       setLoadingDishes(false);
     }
   };
 
-  // helper to format Date -> yyyy-mm-dd
-  function formatYMD(dateObj) {
-    const yyyy = dateObj.getFullYear();
-    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const dd = String(dateObj.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
   /* ---------------- open modal in EDIT mode ---------------- */
-
-  // planDoc is one element from mealPlans
   const handleEditClick = async (planDoc) => {
     setMode("edit");
     setErrorMsg("");
     setSaveStatus("");
     setSearchText("");
 
-    // 1. set selectedDate to that plan's date
     setSelectedDate(planDoc.date);
 
-    // 2. load latest meals & dishes (so list is current)
     try {
       setLoadingMeals(true);
       setLoadingDishes(true);
 
       const [mealsRes, dishesRes] = await Promise.all([
-        axios.get("/api/meals"),
-        axios.get("/api/dishes"),
+        api.get("/api/meals"),
+        api.get("/api/dishes"),
       ]);
 
       const mealArr = Array.isArray(mealsRes.data) ? mealsRes.data : [];
@@ -211,8 +189,6 @@ export default function MealPlanner() {
       setMeals(mealArr);
       setDishes(dishArr);
 
-      // 3. build selectedMealDishes from planDoc.plan
-      // planDoc.plan = [{ meal_id, dish_id:[...] }, ...]
       const selObj = {};
       mealArr.forEach((m) => {
         selObj[m._id] = [];
@@ -238,7 +214,6 @@ export default function MealPlanner() {
   };
 
   /* ---------------- dish checkbox logic ---------------- */
-
   const handleMealDishChange = (mealId, dishId, checked) => {
     setSelectedMealDishes((prev) => {
       const oldList = prev[mealId] || [];
@@ -251,8 +226,7 @@ export default function MealPlanner() {
     });
   };
 
-  /* ---------------- build payload + save ---------------- */
-
+  /* ---------------- payload + save ---------------- */
   const buildMealPlanPayload = () => {
     const adminUserRaw = localStorage.getItem("adminUser") || "";
 
@@ -272,17 +246,12 @@ export default function MealPlanner() {
   };
 
   const handleConfirmPopup = async () => {
-    // validation 1: date required
     if (!selectedDate) {
       setErrorMsg("Please pick a date first.");
       return;
     }
 
-    // validation 2: no duplicate date in CREATE mode
-    if (
-      mode === "create" &&
-      takenDates.includes(selectedDate)
-    ) {
+    if (mode === "create" && takenDates.includes(selectedDate)) {
       setErrorMsg("This date already has a plan. Please pick another date.");
       return;
     }
@@ -291,11 +260,10 @@ export default function MealPlanner() {
 
     try {
       setSaveStatus("saving");
-      await axios.post("/api/meal-plan", body);
+      await api.post("/api/meal-plan", body);
       setSaveStatus("saved");
       setShowModal(false);
 
-      // refresh table after save
       fetchMealPlans();
     } catch (err) {
       console.error("Failed to save meal plan", err);
@@ -305,14 +273,12 @@ export default function MealPlanner() {
   };
 
   /* ---------------- activate / deactivate ---------------- */
-
   const handleActivate = async (planId) => {
     try {
       setActivateStatus("saving");
-      await axios.patch(`/api/meal-plan/${planId}/activate`);
+      await api.patch(`/api/meal-plan/${planId}/activate`);
       setActivateStatus("saved");
 
-      // refresh table so ON/OFF reflects latest
       fetchMealPlans();
     } catch (err) {
       console.error("Failed to activate/deactivate meal plan", err);
@@ -320,8 +286,7 @@ export default function MealPlanner() {
     }
   };
 
-  /* ---------------- search for dishes in popup ---------------- */
-
+  /* ---------------- search filter ---------------- */
   const norm = (s) => String(s || "").toLowerCase().trim();
 
   const visibleDishesGlobalFiltered = () => {
@@ -334,8 +299,7 @@ export default function MealPlanner() {
     });
   };
 
-  /* ---------------- render meal in popup ---------------- */
-
+  /* ---------------- render meal sections in popup ---------------- */
   const renderMealRowInPopup = (mealObj) => {
     const mealId = mealObj._id;
     const title = mealObj.meal_title || "Untitled Meal";
@@ -418,9 +382,7 @@ export default function MealPlanner() {
     );
   };
 
-  /* ---------------- render table of all plans ---------------- */
-
-  // columns = # | DATE | each meal type | ACTIVE | EDIT
+  /* ---------------- build table rows ---------------- */
   const mealColumns = meals.map((m) => ({
     mealId: m._id,
     mealTitle: m.meal_title || "Untitled Meal",
@@ -560,7 +522,6 @@ export default function MealPlanner() {
   };
 
   /* ---------------- UI ---------------- */
-
   return (
     <div className="p-4 md:p-6 w-full max-w-6xl mx-auto">
       {/* HEADER BAR + ADD */}
@@ -660,7 +621,6 @@ export default function MealPlanner() {
                   value={selectedDate}
                   onChange={(e) => {
                     const newDate = e.target.value;
-                    // block picking used dates in CREATE mode
                     if (
                       mode === "create" &&
                       takenDates.includes(newDate)

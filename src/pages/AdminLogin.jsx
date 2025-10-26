@@ -1,10 +1,13 @@
 // src/pages/AdminLogin.jsx
 import React, { useState } from "react";
-import http from "../api/http.js";
+import { useNavigate } from "react-router-dom";
+import { api } from "../lib/axios";        // 🔁 use the SAME client as Users/AddOrder
 import setAuthToken from "../lib/setAuthToken";
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState(""); // blank now ✅
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,20 +18,34 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const { data } = await http.post("/api/admin/login", { email, password });
+      // 🔁 IMPORTANT: this matches Users/AddOrder style
+      const { data } = await api.post("/api/admin/login", {
+        email,
+        password,
+      });
 
-      if (!data?.success || !data?.token)
+      if (!data?.success || !data?.token) {
         throw new Error(data?.message || "Login failed");
+      }
 
-      // save + immediately apply token globally
+      // store token and user
       localStorage.setItem("adminToken", data.token);
-      localStorage.setItem("adminUser", JSON.stringify(data.user));
+      localStorage.setItem(
+        "adminUser",
+        JSON.stringify(data.user ?? data.adminUser ?? "")
+      );
+
+      // apply token to axios for future requests
       setAuthToken(data.token);
 
-      // redirect to admin home
-      window.location.href = "/";
+      // ✅ go to /admin-home (NOT "/")
+      navigate("/admin-home", { replace: true });
     } catch (e) {
-      setErr(e?.response?.data?.message || e?.message || "Login failed");
+      setErr(
+        e?.response?.data?.message ||
+          e?.message ||
+          "Login failed"
+      );
     } finally {
       setLoading(false);
     }
@@ -40,9 +57,15 @@ export default function AdminLogin() {
         onSubmit={onSubmit}
         className="w-full max-w-sm bg-white shadow rounded-xl p-6 space-y-4"
       >
-        <h1 className="text-2xl font-semibold text-center">Admin Login</h1>
+        <h1 className="text-2xl font-semibold text-center">
+          Admin Login
+        </h1>
 
-        {err && <div className="text-sm text-red-600">{err}</div>}
+        {err && (
+          <div className="text-sm text-red-600">
+            {err}
+          </div>
+        )}
 
         <div className="space-y-1">
           <label className="text-sm">Email</label>
