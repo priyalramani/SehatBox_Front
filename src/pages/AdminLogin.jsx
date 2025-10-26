@@ -1,10 +1,13 @@
 // src/pages/AdminLogin.jsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import http from "../api/http.js";
 import setAuthToken from "../lib/setAuthToken";
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState(""); // blank now ✅
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");        // empty in prod
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,22 +18,37 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const { data } = await http.post("/api/admin/login", { email, password });
+      // hit backend
+      const { data } = await http.post("/admin/login", {
+        email,
+        password,
+      });
 
-      if (!data?.success || !data?.token)
+      // backend should respond with { success, token, user }
+      if (!data?.success || !data?.token) {
         throw new Error(data?.message || "Login failed");
+      }
 
-      // save + immediately apply token globally
+      // persist auth
       localStorage.setItem("adminToken", data.token);
-      localStorage.setItem("adminUser", JSON.stringify(data.user));
+      localStorage.setItem(
+        "adminUser",
+        JSON.stringify(data.user ?? data.adminUser ?? "")
+      );
+
+      // set Authorization header for axios for this session
       setAuthToken(data.token);
 
-      // redirect to admin home
-      window.location.href = "/";
-    } catch (e) {
-      setErr(e?.response?.data?.message || e?.message || "Login failed");
+      // ✅ IMPORTANT: send admin to /admin-home
+      navigate("/admin-home", { replace: true });
+    } catch (err) {
+      setErr(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Login failed"
+      );
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
@@ -40,9 +58,15 @@ export default function AdminLogin() {
         onSubmit={onSubmit}
         className="w-full max-w-sm bg-white shadow rounded-xl p-6 space-y-4"
       >
-        <h1 className="text-2xl font-semibold text-center">Admin Login</h1>
+        <h1 className="text-2xl font-semibold text-center">
+          Admin Login
+        </h1>
 
-        {err && <div className="text-sm text-red-600">{err}</div>}
+        {err && (
+          <div className="text-sm text-red-600">
+            {err}
+          </div>
+        )}
 
         <div className="space-y-1">
           <label className="text-sm">Email</label>
