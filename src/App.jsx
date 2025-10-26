@@ -6,6 +6,7 @@ import {
   Outlet,
   Navigate,
 } from "react-router-dom";
+
 import { DishesProvider } from "./store/dishes";
 import { UsersProvider } from "./store/users";
 
@@ -26,6 +27,8 @@ import AdminLogin from "./pages/AdminLogin";
 import AddOrder from "./pages/AddOrder";
 import AllOrders from "./pages/AllOrders";
 import MealPlanner from "./pages/MealPlanner";
+
+import Landing from "./pages/Landing.jsx"; // <-- NEW redirect logic
 
 /* --------------------------- Layouts --------------------------- */
 
@@ -54,16 +57,20 @@ export default function App() {
       <UsersProvider>
         <DishesProvider>
           <Routes>
-            {/* 👇 Public redirect:
-                Always send "/" to login. This protects the root domain. */}
-            <Route path="/" element={<Navigate to="/admin-login" replace />} />
+            {/* Root: decide based on token.
+               Landing will redirect:
+               - if logged in  -> /dishes
+               - if not logged -> /admin-login
+            */}
+            <Route path="/" element={<Landing />} />
 
-            {/* Public route: Admin login */}
+            {/* Public/admin login routes */}
             <Route path="/admin-login" element={<AdminLogin />} />
+            <Route path="/login" element={<Login />} />
 
-            {/* Admin routes (show Navbar, require auth via AdminRoute) */}
+            {/* Admin routes (show Navbar + require auth via AdminRoute) */}
             <Route element={<AdminLayout />}>
-              {/* NEW: Admin home dashboard after login */}
+              {/* Home / dashboard */}
               <Route
                 path="/admin-home"
                 element={
@@ -83,7 +90,7 @@ export default function App() {
                 }
               />
 
-              {/* Single dish details */}
+              {/* Single Dish view */}
               <Route
                 path="/dishes/:id"
                 element={
@@ -103,7 +110,7 @@ export default function App() {
                 }
               />
 
-              {/* All Orders */}
+              {/* All Orders list */}
               <Route
                 path="/all-orders"
                 element={
@@ -123,7 +130,7 @@ export default function App() {
                 }
               />
 
-              {/* Orders routes */}
+              {/* Orders grouped routes */}
               <Route
                 path="/orders"
                 element={
@@ -158,9 +165,6 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-
-              {/* Old login route if still used anywhere in code */}
-              <Route path="/login" element={<Login />} />
             </Route>
 
             {/* Customer / mobile routes (no Navbar) */}
@@ -170,7 +174,7 @@ export default function App() {
               <Route path="/customer/:id" element={<CustomerProfile />} />
             </Route>
 
-            {/* 404 fallback */}
+            {/* Fallback 404 */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </DishesProvider>
