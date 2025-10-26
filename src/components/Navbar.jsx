@@ -32,7 +32,7 @@ export default function Navbar() {
         </Link>
 
         <nav className="flex gap-2">
-          <NavLink to="/" className={linkClass} end>
+          <NavLink to="/admin-home" className={linkClass} end>
             Home
           </NavLink>
 

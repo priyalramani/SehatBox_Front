@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import axios from "axios";
 
-const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API = import.meta.env.VITE_API_BASE_URL || "/api";
 
 export default function AdminRoute({ children }) {
   const [ok, setOk] = useState(false);

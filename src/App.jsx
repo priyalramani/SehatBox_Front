@@ -25,8 +25,6 @@ import CustomerProfile from "./pages/user/CustomerProfile";
 import AdminLogin from "./pages/AdminLogin";
 import AddOrder from "./pages/AddOrder";
 import AllOrders from "./pages/AllOrders";
-
-// ✅ import MealPlanner from corrected path
 import MealPlanner from "./pages/MealPlanner";
 
 /* --------------------------- Layouts --------------------------- */
@@ -56,18 +54,26 @@ export default function App() {
       <UsersProvider>
         <DishesProvider>
           <Routes>
-            {/* ✅ Redirect root (/) to /admin-login */}
+            {/* 👇 Public redirect:
+                Always send "/" to login. This protects the root domain. */}
             <Route path="/" element={<Navigate to="/admin-login" replace />} />
 
-            {/* Public admin login route */}
+            {/* Public route: Admin login */}
             <Route path="/admin-login" element={<AdminLogin />} />
 
-            {/* Admin pages (with Navbar) */}
+            {/* Admin routes (show Navbar, require auth via AdminRoute) */}
             <Route element={<AdminLayout />}>
-              {/* Dashboard home (can be disabled later if not needed) */}
-              <Route path="/dashboard" element={<Home />} />
+              {/* NEW: Admin home dashboard after login */}
+              <Route
+                path="/admin-home"
+                element={
+                  <AdminRoute>
+                    <Home />
+                  </AdminRoute>
+                }
+              />
 
-              {/* Dishes */}
+              {/* Dishes list */}
               <Route
                 path="/dishes"
                 element={
@@ -76,6 +82,8 @@ export default function App() {
                   </AdminRoute>
                 }
               />
+
+              {/* Single dish details */}
               <Route
                 path="/dishes/:id"
                 element={
@@ -105,7 +113,7 @@ export default function App() {
                 }
               />
 
-              {/* Add Order (legacy URL) */}
+              {/* Add Order (legacy) */}
               <Route
                 path="/addorder"
                 element={
@@ -115,7 +123,7 @@ export default function App() {
                 }
               />
 
-              {/* New order URLs */}
+              {/* Orders routes */}
               <Route
                 path="/orders"
                 element={
@@ -141,7 +149,7 @@ export default function App() {
                 }
               />
 
-              {/* ✅ Meal Planner route */}
+              {/* Meal Planner */}
               <Route
                 path="/meal-planner"
                 element={
@@ -151,18 +159,18 @@ export default function App() {
                 }
               />
 
-              {/* legacy login */}
+              {/* Old login route if still used anywhere in code */}
               <Route path="/login" element={<Login />} />
             </Route>
 
-            {/* Customer / mobile routes */}
+            {/* Customer / mobile routes (no Navbar) */}
             <Route element={<MobileLayout />}>
               <Route path="/meal" element={<MealPlan />} />
               <Route path="/meal/:user_uuid" element={<MealPlan />} />
               <Route path="/customer/:id" element={<CustomerProfile />} />
             </Route>
 
-            {/* 404 */}
+            {/* 404 fallback */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </DishesProvider>
