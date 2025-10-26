@@ -8,99 +8,64 @@ import {
   patchDishStatus,
 } from "../api/dishes";
 
-// NOTE: Your existing api/dishes.js (listDishes etc.) may still be calling /api/dishes directly.
-// We'll keep that for create/update/etc for now.
-// But for the main table load we will override and try /api/admin/dishes first.
-
-import { api } from "../lib/axios"; // this is your raw axios instance in lib
-
 export default function Dishes() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
+
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [errMsg, setErrMsg] = useState("");
 
   const [form, setForm] = useState({
     title: "",
-    image_url: "", // comma-separated input
+    image_url: "",
     ingredients: "",
     status: 1,
     price: "",
-
-    // nutrition fields
     carbs: "",
     fats: "",
     protein: "",
     calories: "",
   });
 
-  // token helper (same pattern as Users / AddOrder pages that work)
-  const adminHeaders = () => {
-    const t =
-      localStorage.getItem("adminToken") ||
-      localStorage.getItem("admin_token");
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  };
+  const [errMsg, setErrMsg] = useState("");
 
-  // Load dishes list with fallback route logic
-  const fetchRows = async () => {
+  // ---------------------------------
+  // helpers
+  // ---------------------------------
+
+  const numOrEmpty = (v) => (v === "" ? "" : Number(v));
+
+  async function refreshTable() {
     setLoading(true);
     setErrMsg("");
     try {
-      const params = q ? { q } : undefined;
-
-      let res;
-      try {
-        // most backends put admin-only collections under /api/admin/...
-        res = await api.get("/api/admin/dishes", {
-          params,
-          headers: adminHeaders(),
-          withCredentials: true,
-        });
-      } catch (e1) {
-        if (e1?.response?.status === 404) {
-          // fallback to non-admin path
-          res = await api.get("/api/dishes", {
-            params,
-            headers: adminHeaders(),
-            withCredentials: true,
-          });
-        } else {
-          throw e1;
-        }
-      }
-
-      // Normalize result into an array
-      const data = res.data;
-      const arr = Array.isArray(data)
-        ? data
-        : data?.dishes // sometimes APIs wrap data
-        ? data.dishes
-        : [];
-
-      setRows(arr);
-    } catch (e) {
-      console.error("Failed to load dishes:", e);
+      const data = await listDishes(q);
+      setRows(data);
+    } catch (err) {
+      console.error("Failed to load dishes:", err);
       setErrMsg(
-        e?.response?.data?.error ||
-          e?.response?.data?.message ||
-          e?.message ||
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
           "Failed to load dishes"
       );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
+  // load on first mount
   useEffect(() => {
-    fetchRows();
+    refreshTable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // server-side filter already supports q
   const filtered = useMemo(() => rows, [rows]);
+
+  // ---------------------------------
+  // form open/edit/new
+  // ---------------------------------
 
   const openNew = () => {
     setEditing(null);
@@ -136,7 +101,9 @@ export default function Dishes() {
     setShowForm(true);
   };
 
-  const numOrEmpty = (v) => (v === "" ? "" : Number(v));
+  // ---------------------------------
+  // submit create/update
+  // ---------------------------------
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -145,7 +112,7 @@ export default function Dishes() {
       title: form.title.trim(),
       ingredients: form.ingredients,
       status: Number(form.status) === 1 ? 1 : 0,
-      image_url: form.image_url,
+      image_url: form.image_url, // comma-separated. backend can split.
       price: form.price === "" ? "" : Number(form.price),
       carbs: numOrEmpty(form.carbs),
       fats: numOrEmpty(form.fats),
@@ -160,38 +127,50 @@ export default function Dishes() {
         await createDish(payload);
       }
       setShowForm(false);
-      await fetchRows();
-    } catch (e) {
-      console.error("Save failed:", e);
+      await refreshTable();
+    } catch (err) {
+      console.error("Save failed:", err);
       alert("Save failed");
     }
   };
+
+  // ---------------------------------
+  // delete
+  // ---------------------------------
 
   const onDelete = async (row) => {
     if (!confirm("Delete this dish?")) return;
     try {
       await deleteDish(row._id || row.dish_uuid);
-      await fetchRows();
-    } catch (e) {
-      console.error("Delete failed:", e);
+      await refreshTable();
+    } catch (err) {
+      console.error("Delete failed:", err);
       alert("Delete failed");
     }
   };
+
+  // ---------------------------------
+  // toggle active/inactive
+  // ---------------------------------
 
   const toggleStatus = async (row) => {
     try {
       const newStatus = row.status === 1 ? 0 : 1;
       await patchDishStatus(row._id || row.dish_uuid, newStatus);
-      await fetchRows();
-    } catch (e) {
-      console.error("Status update failed:", e);
+      await refreshTable();
+    } catch (err) {
+      console.error("Status update failed:", err);
       alert("Status update failed");
     }
   };
 
+  // ---------------------------------
+  // search
+  // ---------------------------------
+
   const onSearch = async (e) => {
     e.preventDefault();
-    await fetchRows();
+    await refreshTable();
   };
 
   const fmt = (n) =>
@@ -199,6 +178,10 @@ export default function Dishes() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     }).format(Number(n || 0));
+
+  // ---------------------------------
+  // UI
+  // ---------------------------------
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
@@ -269,7 +252,9 @@ export default function Dishes() {
                       ? `${row.image_url.length} image(s)`
                       : "—"}
                   </td>
-                  <td className="p-2">{row.ingredients || "—"}</td>
+                  <td className="p-2 max-w-xs whitespace-pre-wrap break-words">
+                    {row.ingredients || "—"}
+                  </td>
                   <td className="p-2">₹{fmt(row.price)}</td>
                   <td className="p-2">
                     C {fmt(row.carbs)} / F {fmt(row.fats)} / P{" "}
@@ -294,7 +279,7 @@ export default function Dishes() {
                       ? new Date(row.created_at).toLocaleString()
                       : "—"}
                   </td>
-                  <td className="p-2 flex gap-2">
+                  <td className="p-2 flex gap-2 flex-wrap">
                     <button
                       className="px-2 py-1 border rounded"
                       onClick={() => openEdit(row)}

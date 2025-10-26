@@ -1,29 +1,114 @@
-import http from './http';
+// src/api/dishes.js
+import { api } from "../lib/axios";
 
-export const listDishes = async (q = '', status) => {
-  const params = {};
-  if (q) params.q = q;
-  if (status !== undefined) params.status = status;
-  const { data } = await http.get('/api/dishes', { params });
-  return data;
-};
+// grab admin token for all dish endpoints
+function adminHeaders() {
+  const t =
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("admin_token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
 
-export const createDish = async (payload) => {
-  const { data } = await http.post('/api/dishes', payload);
-  return data;
-};
+// helper that tries a primary URL, then fallback if 404
+async function tryWithFallback(method, primaryUrl, fallbackUrl, options = {}) {
+  try {
+    const res = await api.request({
+      method,
+      url: primaryUrl,
+      ...options,
+    });
+    return res;
+  } catch (err) {
+    if (err?.response?.status === 404 && fallbackUrl) {
+      // try fallback
+      const res2 = await api.request({
+        method,
+        url: fallbackUrl,
+        ...options,
+      });
+      return res2;
+    }
+    throw err;
+  }
+}
 
-export const updateDish = async (idOrUuid, payload) => {
-  const { data } = await http.put(`/api/dishes/${idOrUuid}`, payload);
-  return data;
-};
+// LIST dishes
+export async function listDishes(q = "") {
+  const params = q ? { q } : undefined;
+  const res = await tryWithFallback(
+    "get",
+    "/api/admin/dishes",
+    "/api/dishes",
+    {
+      params,
+      headers: adminHeaders(),
+      withCredentials: true,
+    }
+  );
 
-export const deleteDish = async (idOrUuid) => {
-  const { data } = await http.delete(`/api/dishes/${idOrUuid}`);
-  return data;
-};
+  const data = res.data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.dishes)) return data.dishes;
+  return [];
+}
 
-export const patchDishStatus = async (idOrUuid, status) => {
-  const { data } = await http.patch(`/api/dishes/${idOrUuid}/status`, { status });
-  return data;
-};
+// CREATE dish
+export async function createDish(payload) {
+  // backend probably expects POST /api/admin/dishes
+  const res = await tryWithFallback(
+    "post",
+    "/api/admin/dishes",
+    "/api/dishes",
+    {
+      data: payload,
+      headers: adminHeaders(),
+      withCredentials: true,
+    }
+  );
+  return res.data;
+}
+
+// UPDATE dish
+export async function updateDish(idOrUuid, payload) {
+  const res = await tryWithFallback(
+    "put",
+    `/api/admin/dishes/${idOrUuid}`,
+    `/api/dishes/${idOrUuid}`,
+    {
+      data: payload,
+      headers: adminHeaders(),
+      withCredentials: true,
+    }
+  );
+  return res.data;
+}
+
+// DELETE dish
+export async function deleteDish(idOrUuid) {
+  const res = await tryWithFallback(
+    "delete",
+    `/api/admin/dishes/${idOrUuid}`,
+    `/api/dishes/${idOrUuid}`,
+    {
+      headers: adminHeaders(),
+      withCredentials: true,
+    }
+  );
+  return res.data;
+}
+
+// PATCH status (activate/deactivate dish)
+export async function patchDishStatus(idOrUuid, newStatus) {
+  // some backends do PATCH /.../status with body { status: ... }
+  const res = await tryWithFallback(
+    "patch",
+    `/api/admin/dishes/${idOrUuid}/status`,
+    `/api/dishes/${idOrUuid}/status`,
+    {
+      data: { status: newStatus },
+      headers: adminHeaders(),
+      withCredentials: true,
+    }
+  );
+  return res.data;
+}
