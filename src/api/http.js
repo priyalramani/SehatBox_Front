@@ -1,10 +1,13 @@
-import axios from 'axios';
+// src/api/http.js
+import axios from "axios";
 
-// read either key so both old/new .env work
+// Automatically detect API base depending on environment.
+// In production (nginx proxy), this should just be "/api".
+// In dev, VITE_API_BASE or VITE_API_BASE_URL can still be used.
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:5000';  // fallback only for dev
+  "/api"; // ✅ no localhost, works behind nginx proxy
 
 const http = axios.create({
   baseURL: API_BASE,
