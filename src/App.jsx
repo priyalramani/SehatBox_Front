@@ -1,5 +1,11 @@
 // src/App.jsx
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Outlet,
+  Navigate,
+} from "react-router-dom";
 import { DishesProvider } from "./store/dishes";
 import { UsersProvider } from "./store/users";
 
@@ -50,13 +56,16 @@ export default function App() {
       <UsersProvider>
         <DishesProvider>
           <Routes>
+            {/* ✅ Redirect root (/) to /admin-login */}
+            <Route path="/" element={<Navigate to="/admin-login" replace />} />
+
             {/* Public admin login route */}
             <Route path="/admin-login" element={<AdminLogin />} />
 
             {/* Admin pages (with Navbar) */}
             <Route element={<AdminLayout />}>
-              {/* Dashboard home */}
-              <Route path="/" element={<Home />} />
+              {/* Dashboard home (can be disabled later if not needed) */}
+              <Route path="/dashboard" element={<Home />} />
 
               {/* Dishes */}
               <Route
