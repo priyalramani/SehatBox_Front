@@ -15,7 +15,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const { data } = await http.post("/admin/login", { email, password });
+      const { data } = await http.post("/api/admin/login", { email, password });
 
       if (!data?.success || !data?.token)
         throw new Error(data?.message || "Login failed");
