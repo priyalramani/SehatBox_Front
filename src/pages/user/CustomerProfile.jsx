@@ -1,523 +1,522 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { api } from "../../lib/axios";
+// src/pages/user/CustomerProfile.jsx
+
+import { useEffect, useState, useMemo } from "react";
+import { useParams, useLocation, useNavigate, Link } from "react-router-dom";
+import {
+  customerApi,
+  getCustomerToken,
+  getCustomerUuid,
+  setCustomerSession,
+} from "../../lib/customerApi";
 import WalletStatementModal from "../../components/WalletStatementModal";
 
-/* ----------------- helpers ----------------- */
-function rupee(n) {
-  const v = Number(n || 0);
-  return `₹${v.toFixed(2)}`;
+// helper: read query params like ?key=...
+function useQuery() {
+  return new URLSearchParams(useLocation().search);
 }
-function fmt0(n) {
-  const num = Number(n);
-  return Number.isFinite(num) ? num.toFixed(0) : "0";
-}
-function StatusBadge({ status }) {
-  const on = Number(status) === 1;
-  return on ? (
-    <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded text-xs font-medium">
-      Active
-    </span>
-  ) : (
-    <span className="text-gray-700 bg-gray-100 px-2 py-0.5 rounded text-xs font-medium">
-      Inactive
-    </span>
-  );
-}
-function idFrom(u, fallback) {
-  return u?._id || u?.user_uuid || u?.uuid || fallback;
-}
-function titleFrom(u) {
+
+// get admin token (used to detect if viewer is staff/admin)
+function getAdminToken() {
   return (
-    (u?.user_title && String(u.user_title).trim()) ||
-    (u?.name && String(u.name).trim()) ||
-    (u?.mobile_number && String(u.mobile_number).trim()) ||
-    "Customer"
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("admin_token") ||
+    ""
   );
 }
-function initials(name = "") {
-  const parts = String(name)
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return "SB";
-  return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
-}
-function normalizeNutrition(obj = {}) {
-  const toNum = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  };
-  return {
-    calories: toNum(obj.calories ?? obj.kcal ?? obj.energy),
-    protein: toNum(obj.protein),
-    fat: toNum(obj.fat ?? obj.fats),
-    carbs: toNum(obj.carbs ?? obj.carbohydrates),
-  };
-}
-function ymd(dateLike) {
-  const d = new Date(dateLike);
-  if (isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const dd = d.getDate();
-  return `${y}-${String(m).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-}
-function fromYmd(str) {
-  if (!str) return null;
-  const [y, m, d] = str.split("-").map((x) => parseInt(x, 10));
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d, 0, 0, 0, 0);
-}
-// "Thu, 21 Oct 25"
-function prettyDateShort(dateLike) {
-  const d = new Date(dateLike);
-  if (isNaN(d.getTime())) return "";
-  const weekday = d.toLocaleString("en-GB", { weekday: "short" });
-  const day = d.toLocaleString("en-GB", { day: "2-digit" });
-  const month = d.toLocaleString("en-GB", { month: "short" });
-  const year2 = String(d.getFullYear()).slice(-2);
-  return `${weekday}, ${day} ${month} ${year2}`;
+
+// format helpers
+function fmtNum(n, digits = 2) {
+  const num = Number(n || 0);
+  if (Number.isNaN(num)) return "0";
+  return num.toFixed(digits);
 }
 
-/* ----------------- API helpers ----------------- */
-async function loadUser(userIdFromRoute) {
-  const res = await api.get(`/api/users/${userIdFromRoute}`);
-  return res.data || res;
-}
-async function loadOrdersForUser(userUuid) {
-  try {
-    const { data } = await api.get("/api/orders", {
-      params: { user_uuid: userUuid, limit: 500 },
-    });
-    const items = Array.isArray(data.items)
-      ? data.items
-      : Array.isArray(data)
-      ? data
-      : [];
-    const filtered = items.filter(
-      (o) => String(o.user_uuid || "") === String(userUuid || "")
-    );
-    return { items: filtered, total: filtered.length };
-  } catch (err) {
-    console.error("loadOrdersForUser error:", err);
-    return { items: [], total: 0 };
+// build initials for avatar
+function getInitials(name, mobile) {
+  if (name && name.trim().length > 0) {
+    const parts = name.trim().split(" ");
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return (
+      (parts[0][0] || "") + (parts[1][0] || "")
+    ).toUpperCase();
   }
-}
-async function loadDishById(id) {
-  try {
-    const { data } = await api.get(`/api/dishes/${id}`);
-    const dish = data || {};
-    return {
-      title: dish.title || dish.name || "Dish",
-      nutrition: normalizeNutrition(dish.nutrition || dish),
-    };
-  } catch (err) {
-    console.error("loadDishById error for", id, err);
-    return {
-      title: "Dish",
-      nutrition: { calories: 0, protein: 0, fat: 0, carbs: 0 },
-    };
+  // fallback: last 2 digits of phone
+  if (mobile) {
+    const digits = String(mobile).replace(/[^\d]/g, "");
+    return digits.slice(-2);
   }
+  return "U";
 }
 
-/* ----------------- component ----------------- */
+// convert a backend status number to UI chip
+function StatusChip({ statusNum }) {
+  const active = Number(statusNum) === 1;
+  return (
+    <span
+      className={
+        active
+          ? "text-green-700 bg-green-100 inline-block px-2 py-1 rounded text-xs"
+          : "text-gray-700 bg-gray-100 inline-block px-2 py-1 rounded text-xs"
+      }
+    >
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
+}
+
 export default function CustomerProfile() {
-  const { id: routeId } = useParams();
+  const { id: routeUuid } = useParams(); // /customer/:id
+  const query = useQuery();
+  const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
-  const [orders, setOrders] = useState([]);
-  const [ordersTotal, setOrdersTotal] = useState(0);
-  const [dishMap, setDishMap] = useState({});
+  // session/admin state
+  const [bootstrapError, setBootstrapError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isAdminViewer, setIsAdminViewer] = useState(false);
 
+  // profile info
+  const [profile, setProfile] = useState(null);
+
+  // nutrition info
+  const [nutritionRows, setNutritionRows] = useState([]);
+  const [grandTotals, setGrandTotals] = useState({
+    protein_g: 0,
+    fat_g: 0,
+    carbs_g: 0,
+    kcal: 0,
+  });
+
+  // wallet statement modal
   const [stmtOpen, setStmtOpen] = useState(false);
 
-  const todayStr = ymd(new Date());
-  const [startDate, setStartDate] = useState(todayStr);
-  const [endDate, setEndDate] = useState(todayStr);
+  // date range (default today)
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const [fromDate, setFromDate] = useState(todayISO);
+  const [toDate, setToDate] = useState(todayISO);
 
+  // detect if the viewer is admin
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-
-        // user
-        const u = await loadUser(routeId);
-        if (!alive) return;
-        setUser(u);
-
-        const uuid = idFrom(u, routeId);
-
-        // orders
-        const { items, total } = await loadOrdersForUser(uuid);
-        if (!alive) return;
-        setOrders(items);
-        setOrdersTotal(total);
-
-        // dish ids
-        const ids = new Set();
-        for (const o of items) {
-          if (Array.isArray(o.nutritions)) {
-            for (const n of o.nutritions) {
-              if (n?.dish_uuid) ids.add(String(n.dish_uuid));
-            }
-          }
-          if (Array.isArray(o.dish_details)) {
-            for (const d of o.dish_details) {
-              if (d?.dish_uuid) ids.add(String(d.dish_uuid));
-            }
-          }
-        }
-
-        // load dish info
-        const map = {};
-        for (const did of ids) {
-          // eslint-disable-next-line no-await-in-loop
-          const info = await loadDishById(did);
-          map[did] = info;
-        }
-        if (alive) setDishMap(map);
-      } catch (err) {
-        console.error(err);
-        if (alive) {
-          setUser(null);
-          setOrders([]);
-          setOrdersTotal(0);
-          setDishMap({});
-        }
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [routeId]);
-
-  // filter orders by selected range
-  const filteredOrders = useMemo(() => {
-    const s = fromYmd(startDate);
-    const e = fromYmd(endDate);
-    if (!s || !e) return [];
-    const endMs = e.getTime() + 24 * 60 * 60 * 1000 - 1;
-    return orders.filter((o) => {
-      const dRaw = o.for_date || o.delivery_date || o.created_at;
-      if (!dRaw) return false;
-      const d = new Date(dRaw);
-      if (isNaN(d.getTime())) return false;
-      const ms = d.getTime();
-      return ms >= s.getTime() && ms <= endMs;
-    });
-  }, [orders, startDate, endDate]);
-
-  // nutrition rows
-  const { nutritionRows, nutritionTotals } = useMemo(() => {
-    const rows = [];
-    const totals = { protein: 0, fat: 0, carbs: 0, calories: 0 };
-
-    for (const o of filteredOrders) {
-      const dRaw = o.for_date || o.delivery_date || o.created_at;
-      const dateStrPretty = prettyDateShort(dRaw);
-
-      if (Array.isArray(o.nutritions) && o.nutritions.length > 0) {
-        for (const line of o.nutritions) {
-          const dishId = String(line.dish_uuid || "");
-          if (!dishId) continue;
-          const qty =
-            Number(line.quantity ?? line.qty ?? line.count ?? 1) || 1;
-
-          const dishTitle =
-            (dishMap[dishId] && dishMap[dishId].title) || "Dish";
-
-          const normTotal = normalizeNutrition(line.nutrition || {});
-          const protein = normTotal.protein;
-          const fat = normTotal.fat;
-          const carbs = normTotal.carbs;
-          const calories = normTotal.calories;
-
-          rows.push({
-            datePretty: dateStrPretty,
-            dish: dishTitle,
-            qty,
-            protein,
-            fat,
-            carbs,
-            calories,
-          });
-
-          totals.protein += protein;
-          totals.fat += fat;
-          totals.carbs += carbs;
-          totals.calories += calories;
-        }
-        continue;
-      }
-
-      // fallback if no snapshot
-      if (Array.isArray(o.dish_details)) {
-        for (const line of o.dish_details) {
-          const dishId = String(line.dish_uuid || "");
-          if (!dishId) continue;
-
-          const qty =
-            Number(line.quantity ?? line.qty ?? line.count ?? 1) || 1;
-
-          const info = dishMap[dishId] || {};
-          const dishTitle = info.title || "Dish";
-          const perServing = info.nutrition || {
-            calories: 0,
-            protein: 0,
-            fat: 0,
-            carbs: 0,
-          };
-
-          const protein = perServing.protein * qty;
-          const fat = perServing.fat * qty;
-          const carbs = perServing.carbs * qty;
-          const calories = perServing.calories * qty;
-
-          rows.push({
-            datePretty: dateStrPretty,
-            dish: dishTitle,
-            qty,
-            protein,
-            fat,
-            carbs,
-            calories,
-          });
-
-          totals.protein += protein;
-          totals.fat += fat;
-          totals.carbs += carbs;
-          totals.calories += calories;
-        }
-      }
+    const token = getAdminToken();
+    if (token) {
+      setIsAdminViewer(true);
+    } else {
+      setIsAdminViewer(false);
     }
+  }, []);
 
-    return { nutritionRows: rows, nutritionTotals: totals };
-  }, [filteredOrders, dishMap]);
+  // 1) FIRST TIME VISIT FLOW (magic link onboarding)
+  // If URL has ?key=..., redeem it by calling /api/public/bootstrap-session
+  // This creates/stores a customer session token server-side and returns us
+  // { customer_token, user_uuid }. We save that in localStorage.
+  // Then we strip ?key=... from the URL so it doesn't leak.
+  useEffect(() => {
+    const maybeBootstrap = async () => {
+      const urlKey = query.get("key");
+      if (!urlKey) return; // nothing to redeem
 
-  const wallet = Number(user?.wallet_balance) || 0;
-  const finalUserId = idFrom(user, routeId);
+      try {
+        const body = {
+          user_uuid: routeUuid,
+          key: urlKey,
+        };
 
-  /* ----------------- UI ----------------- */
+        // We explicitly pass empty headers to avoid sending any stale Authorization.
+        const { data } = await customerApi.post(
+          "/public/bootstrap-session",
+          body,
+          { headers: {} }
+        );
+
+        // data = { customer_token, user_uuid, expires_at }
+        setCustomerSession(data.customer_token, data.user_uuid);
+
+        // remove ?key=... from URL to avoid leaking link if user screenshots
+        const cleanPath = `/customer/${data.user_uuid}`;
+        window.history.replaceState({}, "", cleanPath);
+      } catch (err) {
+        console.error("bootstrap-session failed", err);
+        setBootstrapError(
+          err?.response?.data?.error ||
+            "Your secure link expired. Please request a new link from Sehat Box."
+        );
+      }
+    };
+
+    maybeBootstrap();
+  }, [routeUuid, query]);
+
+  // 2) MAIN FETCH: profile + nutrition
+  const fetchAll = async () => {
+    setLoading(true);
+    setBootstrapError("");
+
+    try {
+      const token = getCustomerToken();
+      const storedUuid = getCustomerUuid();
+
+      // if no session token at all → can't load secure data
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      // If we DO have a stored uuid + token, but the current URL uuid is different,
+      // redirect to the correct one (prevents customer A from typing /customer/B).
+      if (storedUuid && storedUuid !== routeUuid) {
+        navigate(`/customer/${storedUuid}`, { replace: true });
+        setLoading(false);
+        return;
+      }
+
+      // fetch profile from /customer-api/me
+      const meRes = await customerApi.get("/customer-api/me");
+      const me = meRes.data || null;
+      setProfile(me);
+
+      // fetch nutrition from /customer-api/nutrition
+      const nutRes = await customerApi.get("/customer-api/nutrition", {
+        params: {
+          from: fromDate,
+          to: toDate,
+        },
+      });
+
+      const nutData = nutRes.data || {};
+      setNutritionRows(Array.isArray(nutData.rows) ? nutData.rows : []);
+      setGrandTotals(
+        nutData.grand_totals || {
+          protein_g: 0,
+          fat_g: 0,
+          carbs_g: 0,
+          kcal: 0,
+        }
+      );
+    } catch (err) {
+      console.error("fetchAll() error", err);
+      setBootstrapError(
+        err?.response?.data?.error ||
+          "Session expired. Please request a new link."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // run fetchAll on mount (if we already have a session in localStorage)
+  useEffect(() => {
+    if (getCustomerToken() || getCustomerUuid()) {
+      fetchAll();
+    } else {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeUuid]);
+
+  // derived display values
+  const walletDisplay = useMemo(() => {
+    if (!profile) return "₹0.00";
+    const bal = Number(profile.wallet_balance || 0);
+    return `₹${bal.toFixed(2)}`;
+  }, [profile]);
+
+  const ordersCount = profile?.orders_count ?? 0;
+  const nameDisplay = profile?.name || "Customer";
+  const mobileDisplay = profile?.mobile_number || "";
+  const statusNum = profile?.status;
+  const uuidToShow = routeUuid; // as in URL
+
+  const initials = useMemo(
+    () => getInitials(nameDisplay, mobileDisplay),
+    [nameDisplay, mobileDisplay]
+  );
+
+  // Render states
+  if (loading) {
+    return (
+      <div className="p-4 text-gray-600 text-sm">Loading your profile…</div>
+    );
+  }
+
+  if (bootstrapError && !getCustomerToken()) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center space-y-4">
+        <div className="text-lg font-semibold text-red-600">
+          {bootstrapError}
+        </div>
+        <div className="text-sm text-gray-600">
+          Please request a fresh secure link from Sehat Box.
+        </div>
+      </div>
+    );
+  }
+
+  if (!getCustomerToken() && !profile) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center space-y-4">
+        <div className="text-lg font-semibold text-gray-800">
+          Secure link required
+        </div>
+        <div className="text-sm text-gray-600">
+          Please request your personal access link from Sehat Box.
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <section className="max-w-xl mx-auto p-4 space-y-4 text-[#111] bg-white min-h-screen">
-      {/* CUSTOMER HEADER CARD */}
-      <div className="border rounded-lg p-4 flex flex-col gap-4 bg-white shadow-sm">
-        {/* top row: avatar + info + Meals button */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="w-12 h-12 flex-shrink-0 rounded-full bg-green-600 text-white flex items-center justify-center text-lg font-semibold">
-              {initials(titleFrom(user))}
+    <div className="p-4 space-y-6 max-w-2xl mx-auto text-gray-900">
+      {/* HEADER CARD */}
+      <div className="rounded-lg border p-4 bg-white shadow-sm">
+        <div className="flex items-start gap-3">
+          {/* Avatar w/ initials */}
+          <div className="w-12 h-12 rounded-full bg-green-600 text-white flex items-center justify-center text-lg font-semibold">
+            {initials}
+          </div>
+
+          {/* Info block */}
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex flex-col leading-tight">
+              <div className="text-lg font-semibold text-gray-900">
+                {nameDisplay}
+              </div>
+              {mobileDisplay && (
+                <div className="text-sm text-gray-600">
+                  +91 {mobileDisplay}
+                </div>
+              )}
             </div>
-            <div className="min-w-0">
-              <div className="text-lg font-semibold flex flex-wrap items-center gap-2">
-                <span className="truncate">{titleFrom(user)}</span>
-                <StatusBadge status={user?.status} />
-              </div>
 
-              <div className="text-sm text-gray-700">
-                {user?.mobile_number || "—"}
-              </div>
+            <div className="text-[11px] text-gray-500 break-all">
+              ID: {uuidToShow}
+            </div>
 
-              <div className="text-[11px] text-gray-500 break-all">
-                ID: {finalUserId}
-              </div>
+            {/* quick actions row: Meals, Wallet Statement (admin only) */}
+            <div className="flex flex-wrap gap-2 text-xs">
+              {/* Meals button */}
+              <Link
+                to={`/meal/${uuidToShow}`}
+                className="px-2 py-1 rounded border bg-white hover:bg-gray-50"
+              >
+                Meals
+              </Link>
+
+              {/* Wallet Statement button:
+                 - if admin logged in -> open modal
+                 - else -> show fallback alert
+              */}
+              <button
+                className="px-2 py-1 rounded border bg-white hover:bg-gray-50"
+                onClick={() => {
+                  if (isAdminViewer) {
+                    setStmtOpen(true);
+                  } else {
+                    alert(
+                      "Please contact Sehat Box to view your full wallet statement."
+                    );
+                  }
+                }}
+              >
+                Wallet Statement
+              </button>
             </div>
           </div>
 
-          {/* Meals button */}
-          <Link
-            to={`/meal/${finalUserId}`}
-            className="px-3 py-2 rounded-lg border text-sm font-medium text-green-700 border-green-600 bg-green-50 hover:bg-green-100"
-          >
-            Meals
-          </Link>
-        </div>
+          {/* Status / Wallet / Orders summary */}
+          <div className="flex flex-col gap-3 text-right text-sm">
+            <div>
+              <div className="text-gray-500 text-[11px] uppercase">
+                Status
+              </div>
+              <div className="flex justify-end">
+                <StatusChip statusNum={statusNum} />
+              </div>
+            </div>
 
-        {/* wallet + orders in one row always, even on mobile */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="border rounded-lg p-3 bg-gray-50">
-            <div className="text-[12px] text-gray-600">
-              Wallet Balance
+            <div>
+              <div className="text-gray-500 text-[11px] uppercase">
+                Wallet
+              </div>
+              <div className="text-base font-medium">{walletDisplay}</div>
             </div>
-            <div className="text-xl font-semibold leading-tight">
-              {rupee(wallet)}
+
+            <div>
+              <div className="text-gray-500 text-[11px] uppercase">
+                Orders
+              </div>
+              <div className="text-base font-medium">{ordersCount}</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* DATE FILTER + NUTRITION */}
+      <div className="rounded-lg border p-4 bg-white shadow-sm space-y-4">
+        {/* Filters */}
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-[11px] text-gray-500 uppercase mb-1">
+              From
+            </label>
+            <input
+              className="border rounded px-3 py-2 text-sm"
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 uppercase mb-1">
+              To
+            </label>
+            <input
+              className="border rounded px-3 py-2 text-sm"
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </div>
+          <div>
             <button
-              className="mt-2 text-[12px] px-2 py-1 rounded-md bg-green-600 text-white font-medium hover:bg-green-700"
-              onClick={() => setStmtOpen(true)}
+              className="border rounded px-3 py-2 text-sm bg-black text-white"
+              onClick={fetchAll}
             >
-              Statement
+              Refresh
             </button>
           </div>
-
-          <div className="border rounded-lg p-3 bg-gray-50 text-right">
-            <div className="text-[12px] text-gray-600">
-              Orders
-            </div>
-            <div className="text-xl font-semibold leading-tight">
-              {ordersTotal}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* NUTRITION CARD */}
-      <div className="border rounded-lg bg-white shadow-sm">
-        {/* Header row with title + dates in a single horizontal row */}
-        <div className="border-b px-4 py-3 flex flex-col gap-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="text-sm font-semibold text-green-700">
-              Nutritional Info
-            </div>
-
-            {/* date range inline on mobile */}
-            <form
-              className="flex items-center flex-wrap gap-2 text-sm"
-              onSubmit={(e) => e.preventDefault()}
-            >
-              <label className="flex items-center gap-1 text-[12px] text-gray-600">
-                <span>From</span>
-                <input
-                  type="date"
-                  className="border rounded px-2 py-1 text-sm"
-                  value={startDate}
-                  max={endDate}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setStartDate(v);
-                    if (v && endDate && v > endDate) {
-                      setEndDate(v);
-                    }
-                  }}
-                />
-              </label>
-
-              <label className="flex items-center gap-1 text-[12px] text-gray-600">
-                <span>To</span>
-                <input
-                  type="date"
-                  className="border rounded px-2 py-1 text-sm"
-                  value={endDate}
-                  min={startDate}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEndDate(v);
-                    if (v && startDate && v < startDate) {
-                      setStartDate(v);
-                    }
-                  }}
-                />
-              </label>
-            </form>
-          </div>
         </div>
 
-        {/* Table or empty state */}
-        <div className="p-4">
-          {loading ? (
-            <div className="text-sm text-gray-600">
-              Loading…
-            </div>
-          ) : nutritionRows.length === 0 ? (
-            <div className="text-sm text-gray-700">
-              No nutrition records in this date range.
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm border rounded-lg">
-                  <thead>
-                    <tr className="bg-gray-50 text-left">
-                      <th className="px-3 py-2 border whitespace-nowrap">
-                        Date
-                      </th>
-                      <th className="px-3 py-2 border">Dish</th>
-                      <th className="px-3 py-2 border text-right whitespace-nowrap">
-                        Protein (g)
-                      </th>
-                      <th className="px-3 py-2 border text-right whitespace-nowrap">
-                        Fat (g)
-                      </th>
-                      <th className="px-3 py-2 border text-right whitespace-nowrap">
-                        Carbs (g)
-                      </th>
-                      <th className="px-3 py-2 border text-right whitespace-nowrap">
-                        kcal
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nutritionRows.map((row, idx) => (
-                      <tr key={idx}>
-                        <td className="px-3 py-2 border align-top whitespace-nowrap text-[13px]">
-                          {row.datePretty}
-                        </td>
-                        <td className="px-3 py-2 border align-top">
-                          <div className="font-medium text-[14px] leading-snug whitespace-pre-line">
-                            {row.dish}
+        {/* Nutrition Data */}
+        {nutritionRows.length === 0 ? (
+          <div className="text-sm text-gray-600">
+            No nutrition records in this date range.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {nutritionRows.map((day, i) => (
+              <div
+                key={i}
+                className="border rounded p-3 bg-gray-50 space-y-2"
+              >
+                {/* Day header */}
+                <div className="font-medium text-gray-800">{day.date}</div>
+
+                {/* Meal items */}
+                <div className="text-sm text-gray-700 space-y-2">
+                  {Array.isArray(day.items) &&
+                    day.items.map((item, j) => (
+                      <div
+                        key={j}
+                        className="flex items-start justify-between"
+                      >
+                        <div className="flex-1 pr-2">
+                          <div className="font-medium">
+                            {item.dish_name || "Meal Item"}
                           </div>
-                          <div className="text-[12px] text-gray-500">
-                            Qty: {row.qty}
+                          <div className="text-xs text-gray-500">
+                            Qty: {item.qty ?? 1}
                           </div>
-                        </td>
-                        <td className="px-3 py-2 border text-right align-top text-[14px]">
-                          {fmt0(row.protein)}
-                        </td>
-                        <td className="px-3 py-2 border text-right align-top text-[14px]">
-                          {fmt0(row.fat)}
-                        </td>
-                        <td className="px-3 py-2 border text-right align-top text-[14px]">
-                          {fmt0(row.carbs)}
-                        </td>
-                        <td className="px-3 py-2 border text-right align-top text-[14px]">
-                          {fmt0(row.calories)}
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="text-right text-[11px] text-gray-600 leading-5">
+                          <div>
+                            P {fmtNum(item.protein_g, 0)}g / F{" "}
+                            {fmtNum(item.fat_g, 0)}g
+                          </div>
+                          <div>
+                            C {fmtNum(item.carbs_g, 0)}g /{" "}
+                            {fmtNum(item.kcal, 0)} kcal
+                          </div>
+                        </div>
+                      </div>
                     ))}
+                </div>
 
-                    <tr className="bg-gray-50 font-semibold text-[14px]">
-                      <td className="px-3 py-2 border">Total</td>
-                      <td className="px-3 py-2 border">—</td>
-                      <td className="px-3 py-2 border text-right">
-                        {fmt0(nutritionTotals.protein)}
-                      </td>
-                      <td className="px-3 py-2 border text-right">
-                        {fmt0(nutritionTotals.fat)}
-                      </td>
-                      <td className="px-3 py-2 border text-right">
-                        {fmt0(nutritionTotals.carbs)}
-                      </td>
-                      <td className="px-3 py-2 border text-right">
-                        {fmt0(nutritionTotals.calories)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                {/* Daily totals */}
+                {day.daily_totals && (
+                  <div className="text-[11px] text-gray-800 bg-white rounded border p-2 flex flex-wrap gap-4 justify-between">
+                    <div>
+                      <div className="font-semibold text-gray-700">
+                        Daily Totals
+                      </div>
+                      <div>
+                        Protein: {fmtNum(day.daily_totals.protein_g, 0)} g
+                      </div>
+                      <div>
+                        Fat: {fmtNum(day.daily_totals.fat_g, 0)} g
+                      </div>
+                      <div>
+                        Carbs: {fmtNum(day.daily_totals.carbs_g, 0)} g
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div>Calories</div>
+                      <div className="font-semibold text-gray-900">
+                        {fmtNum(day.daily_totals.kcal, 0)} kcal
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Grand totals */}
+            <div className="border rounded p-3 bg-white text-sm text-gray-800 flex flex-wrap gap-6 justify-between">
+              <div>
+                <div className="text-gray-500 text-[11px] uppercase">
+                  Total Protein
+                </div>
+                <div className="font-medium">
+                  {fmtNum(grandTotals.protein_g, 0)} g
+                </div>
               </div>
 
-              <div className="text-[11px] text-gray-500 mt-2 leading-snug">
-                * Per-line nutrition values are already multiplied by
-                quantity. Totals are summed across all orders in the
-                selected date range.
+              <div>
+                <div className="text-gray-500 text-[11px] uppercase">
+                  Total Fat
+                </div>
+                <div className="font-medium">
+                  {fmtNum(grandTotals.fat_g, 0)} g
+                </div>
               </div>
-            </>
-          )}
-        </div>
+
+              <div>
+                <div className="text-gray-500 text-[11px] uppercase">
+                  Total Carbs
+                </div>
+                <div className="font-medium">
+                  {fmtNum(grandTotals.carbs_g, 0)} g
+                </div>
+              </div>
+
+              <div>
+                <div className="text-gray-500 text-[11px] uppercase">
+                  Total Calories
+                </div>
+                <div className="font-medium">
+                  {fmtNum(grandTotals.kcal, 0)} kcal
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {bootstrapError && (
+          <div className="text-center text-xs text-red-600">
+            {bootstrapError}
+          </div>
+        )}
       </div>
 
-      {stmtOpen && finalUserId && (
+      {/* Wallet Statement Modal (ADMIN-ONLY live data) */}
+      {isAdminViewer && profile?.user_uuid && (
         <WalletStatementModal
           open={stmtOpen}
-          userId={finalUserId}
-          userTitle={titleFrom(user)}
+          userId={profile.user_uuid || uuidToShow}
+          userTitle={profile.name || profile.mobile_number || uuidToShow}
           onClose={() => setStmtOpen(false)}
         />
       )}
-    </section>
+    </div>
   );
 }

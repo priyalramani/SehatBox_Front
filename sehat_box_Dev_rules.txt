@@ -1,0 +1,56 @@
+# SehatBox Frontend/Backend Integration Rules (DO NOT BREAK)
+
+These rules are FINAL and MUST be followed for all future changes.
+
+1. API BASE / axios:
+   - We do NOT hardcode `http://localhost:4000` anywhere in production code.
+   - We use `api` from `src/lib/axios.js` and it must NOT prepend `http://localhost:4000`.
+   - We rely on Nginx reverse proxy so the browser calls relative URLs like `/api/...`.
+   - In dev, the base URL may come from env (`VITE_API_BASE`), but prod build uses "" (empty string).
+
+2. Admin API pattern:
+   - Admin-only endpoints live under `/api/admin/...` on the server.
+   - Some legacy endpoints exist at `/api/...` (without `/admin`).
+   - Our code ALWAYS tries `/api/admin/...` first and falls back to `/api/...` if 404.
+   - This logic lives in helpers like `src/api/dishes.js` (`tryWithFallback`) and MUST NOT be removed.
+
+3. Auth:
+   - We store the admin JWT token in `localStorage` under `adminToken` or `admin_token`.
+   - Every admin request MUST include:
+     `Authorization: Bearer <token>`
+     plus `withCredentials: true`.
+   - Helper `adminHeaders()` is the single source of truth for this pattern.
+   - DO NOT remove `adminHeaders()`, and DO NOT call admin APIs without Authorization.
+
+4. Routing:
+   - `/` MUST render `<Landing />`.
+   - `<Landing />` looks for `adminToken`/`admin_token` and:
+     - If found → redirect to `/dishes`
+     - If not found → redirect to `/admin-login`
+   - DO NOT send users directly to `/admin-login` from `/`. Use `<Landing />`.
+
+5. Protected pages:
+   - Any admin page (`/dishes`, `/users`, `/all-orders`, etc.) MUST be wrapped in `<AdminRoute>`.
+   - `<AdminRoute>` is responsible for checking `/api/admin/me` (or the working equivalent)
+     and redirecting unauthenticated users.
+   - DO NOT bypass `<AdminRoute>` just to "get it to work".
+
+6. Build & deploy:
+   - After frontend changes:
+     - `npm run build`
+     - Copy `dist/*` to `/var/www/sehatbox/dist/`
+     - Reload nginx
+   - DO NOT change nginx unless we explicitly plan to.
+   - DO NOT reintroduce localhost URLs in code instead of using the proxy.
+
+7. Dishes module:
+   - `src/api/dishes.js` uses `tryWithFallback()` to hit `/api/admin/dishes` first.
+   - Pages like `Dishes.jsx` should IMPORT from `src/api/dishes.js` for list/create/update/etc.
+   - DO NOT inline raw axios calls that skip this logic.
+
+8. Search/filter for dishes:
+   - `listDishes(q)` accepts `q` and passes it as `?q=` to backend.
+   - Search button just calls `refreshTable()` again with the same `q`.
+   - DO NOT reimplement search by filtering client-side only.
+
+9. NEVER REMOVE THESE RULES WITHOUT EXPLICIT DECISION.

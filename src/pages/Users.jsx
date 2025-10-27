@@ -1,4 +1,4 @@
-// src/Pages/Users.jsx
+// src/pages/Users.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/axios";
 import WalletStatementModal from "../components/WalletStatementModal";
@@ -48,7 +48,7 @@ export default function Users() {
   const [stmtOpen, setStmtOpen] = useState(false);
   const [stmtUser, setStmtUser] = useState({ id: "", title: "" });
 
-  // Prevent page behind from scrolling while any modal is open
+  // Prevent background scroll when a modal is open
   useEffect(() => {
     const anyOpen = modalOpen || balModalOpen || stmtOpen;
     const prev = document.body.style.overflow;
@@ -62,6 +62,7 @@ export default function Users() {
     setLoading(true);
     setErr("");
     try {
+      // /api/users is admin-protected. api already attaches admin auth header.
       const { data } = await api.get("/api/users", {
         params: q ? { q } : undefined,
       });
@@ -80,7 +81,7 @@ export default function Users() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Search by mobile, alt mobile OR title (case-insensitive)
+  // local filter (mobile, alt mobile, title)
   const filtered = useMemo(() => {
     if (!q) return list;
     const s = q.trim().toLowerCase();
@@ -123,25 +124,44 @@ export default function Users() {
     fetchUsers();
   };
 
-  // Build a mobile profile link using current origin
+  // Build a base profile URL without token
   const profileUrl = (uid) => `${getOrigin()}/customer/${uid}`;
 
-  const copyProfileLink = async (uid) => {
-    const url = profileUrl(uid);
+  // NEW: call backend to generate a magic link WITH key, copy/share it
+  const copyMagicLink = async (uid) => {
     try {
-      // Prefer native share on mobile when available
-      if (navigator.share) {
-        await navigator.share({ title: "Sehat Box Profile", url });
-        return;
+      // ask backend to generate 1-time-ish link
+      const { data } = await api.post("/api/admin/generate-magic-link", {
+        user_uuid: uid,
+      });
+
+      const linkToShare = data.magic_link || profileUrl(uid);
+
+      try {
+        // prefer native share on mobile
+        if (navigator.share) {
+          await navigator.share({
+            title: "Your Sehat Box link",
+            url: linkToShare,
+          });
+          return;
+        }
+      } catch {
+        /* ignore share fail and fall back to clipboard */
       }
-    } catch {
-      /* fall back */
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      alert("Profile link copied!");
-    } catch {
-      alert(url); // final fallback
+
+      try {
+        await navigator.clipboard.writeText(linkToShare);
+        alert("Magic link copied!");
+      } catch {
+        alert(linkToShare);
+      }
+    } catch (err) {
+      console.error("copyMagicLink error", err);
+      alert(
+        err?.response?.data?.error ||
+          "Failed to generate magic link. Check if you're logged in as admin."
+      );
     }
   };
 
@@ -244,7 +264,11 @@ export default function Users() {
                       )}
                     </td>
                     <td className="px-3 py-2 border">
-                      {type === 0 ? "admin" : type === 2 ? "delivery" : "customer"}
+                      {type === 0
+                        ? "admin"
+                        : type === 2
+                        ? "delivery"
+                        : "customer"}
                     </td>
                     <td className="px-3 py-2 border">{createdText}</td>
                     <td className="px-3 py-2 border">
@@ -256,20 +280,18 @@ export default function Users() {
                           Edit
                         </button>
 
-                        {/* Copy mobile-friendly profile link (uses current origin) */}
+                        {/* NEW: Copy Magic Link (secure bootstrap link) */}
                         {uid && (
                           <button
-                            onClick={() => copyProfileLink(uid)}
+                            onClick={() => copyMagicLink(uid)}
                             className="px-2 py-1 rounded border bg-white hover:bg-gray-50"
-                            title="Copy profile link"
+                            title="Generate & copy secure link for this user"
                           >
-                            Copy Link
+                            Magic Link
                           </button>
                         )}
 
-                        {/* Removed "Open" button by request */}
-
-                        {/* Keep wallet actions hidden for delivery */}
+                        {/* Wallet actions (not for delivery) */}
                         {type !== 2 && (
                           <>
                             <button
@@ -335,7 +357,7 @@ function AddBalanceModal({ user, onClose, onSaved }) {
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   });
-  const [narration, setNarration] = useState(""); // NEW
+  const [narration, setNarration] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -347,7 +369,6 @@ function AddBalanceModal({ user, onClose, onSaved }) {
       setErr("Wallet is not available for delivery users.");
       return;
     }
-    // Validate numeric amount manually (since we use text to avoid spinners)
     const val = Number(String(amount).replace(/[^0-9.]/g, ""));
     if (!Number.isFinite(val) || val <= 0) {
       setErr("Amount must be a positive number.");
@@ -359,7 +380,7 @@ function AddBalanceModal({ user, onClose, onSaved }) {
       await api.post(`/api/users/${user._id || user.user_uuid}/wallet/add`, {
         amount: val,
         date,
-        narration: narration?.trim() || undefined, // include narration
+        narration: narration?.trim() || undefined,
       });
       onSaved();
     } catch (e) {
@@ -411,7 +432,6 @@ function AddBalanceModal({ user, onClose, onSaved }) {
             />
           </div>
 
-          {/* NEW: Narration (optional) */}
           <div className="space-y-1">
             <label className="text-sm">Narration (optional)</label>
             <textarea
@@ -445,7 +465,6 @@ function emptyAddress() {
 
 function normalizeAddresses(addrs) {
   const arr = Array.isArray(addrs) ? addrs : [];
-  // ensure exactly one default when there is at least one address
   let seenDefault = false;
   const out = arr
     .map((a) => {
@@ -487,9 +506,9 @@ function UserModal({ initial, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const showWallet = Number(type) !== 2;      // hide for delivery
-  const showAddresses = Number(type) === 1;   // only for customer
-  const showAltMobile = Number(type) === 1;   // only for customer
+  const showWallet = Number(type) !== 2;
+  const showAddresses = Number(type) === 1;
+  const showAltMobile = Number(type) === 1;
 
   const setDefault = (idx) => {
     setAddresses((prev) =>
@@ -539,7 +558,9 @@ function UserModal({ initial, onClose, onSaved }) {
       status: Number(status),
       user_title: userTitle,
       gender,
-      alternate_mobile_number: showAltMobile ? cleanMobile(altMobile) || undefined : undefined,
+      alternate_mobile_number: showAltMobile
+        ? cleanMobile(altMobile) || undefined
+        : undefined,
       address: showAddresses ? normalizeAddresses(addresses) : [],
     };
 
@@ -566,7 +587,6 @@ function UserModal({ initial, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/20 flex items-center justify-center p-4 z-50">
-      {/* Scrollable container */}
       <div className="w-full max-w-2xl bg-white rounded-xl shadow max-h-[85vh] overflow-y-auto">
         <div className="p-4">
           <div className="flex items-center justify-between">
@@ -628,7 +648,6 @@ function UserModal({ initial, onClose, onSaved }) {
               </div>
             </div>
 
-            {/* User Title */}
             <div className="space-y-1">
               <label className="text-sm">User Title</label>
               <input
@@ -639,7 +658,6 @@ function UserModal({ initial, onClose, onSaved }) {
               />
             </div>
 
-            {/* Gender */}
             <div className="space-y-1">
               <label className="text-sm">Gender</label>
               <select
@@ -655,7 +673,6 @@ function UserModal({ initial, onClose, onSaved }) {
               </select>
             </div>
 
-            {/* Alternate Mobile for customers only */}
             {Number(type) === 1 && (
               <div className="space-y-1">
                 <label className="text-sm">Alternate Mobile (optional)</label>
@@ -668,7 +685,6 @@ function UserModal({ initial, onClose, onSaved }) {
               </div>
             )}
 
-            {/* Wallet only for non-delivery */}
             {Number(type) !== 2 && (
               <div className="space-y-1">
                 <label className="text-sm">Wallet (read-only)</label>
@@ -685,7 +701,6 @@ function UserModal({ initial, onClose, onSaved }) {
               </div>
             )}
 
-            {/* Addresses only for customers */}
             {Number(type) === 1 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -705,7 +720,9 @@ function UserModal({ initial, onClose, onSaved }) {
                   {addresses.map((a, idx) => (
                     <div key={idx} className="border rounded-md p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <div className="text-sm font-medium">Address #{idx + 1}</div>
+                        <div className="text-sm font-medium">
+                          Address #{idx + 1}
+                        </div>
                         <div className="flex items-center gap-3">
                           <label className="text-sm flex items-center gap-1">
                             <input
