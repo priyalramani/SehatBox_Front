@@ -1,6 +1,6 @@
 // src/pages/AddOrder.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../lib/axios";
+import api from "../lib/axios";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const toNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -322,7 +322,7 @@ export default function AddOrder() {
     (async () => {
       setUsersErr("");
       try {
-        const { data } = await api.get("/api/users");
+        const { data } = await api.get("/users");
         const arr = Array.isArray(data) ? data : data?.users || [];
         const normalized = arr
           .map((u) => {
@@ -368,7 +368,7 @@ export default function AddOrder() {
     (async () => {
       setDishesErr("");
       try {
-        const { data } = await api.get("/api/dishes?status=1");
+        const { data } = await api.get("/dishes?status=1");
         const arr = Array.isArray(data) ? data : data?.dishes || [];
         const normalized = arr.map((d) => ({
           id: d._id || d.uuid || d.dish_uuid || d.id,
@@ -402,8 +402,8 @@ export default function AddOrder() {
           .filter((m) => !!m.id);
       }
       try {
-        let list = await fetchMeals("/api/meals?status=1");
-        if (!Array.isArray(list) || list.length === 0) list = await fetchMeals("/api/meals");
+        let list = await fetchMeals("/meals?status=1");
+        if (!Array.isArray(list) || list.length === 0) list = await fetchMeals("/meals");
         setMeals(list);
         if (list.length === 0) setMealsErr("No meals found");
       } catch (e) {
@@ -418,7 +418,7 @@ export default function AddOrder() {
     if (!editingOrderId) return;
     (async () => {
       try {
-        const { data } = await api.get(`/api/orders/${encodeURIComponent(editingOrderId)}`);
+        const { data } = await api.get(`/orders/${encodeURIComponent(editingOrderId)}`);
         // seed fields
         setSelectedMealId(data.meal_id || "");
         setForDateStr(isoToDDMMYY(data.for_date));
@@ -498,7 +498,7 @@ export default function AddOrder() {
     setSubmitting(true);
     try {
       const calls = selectedUserIds.map((uid) =>
-        api.post("/api/orders", { ...common, user_uuid: uid })
+        api.post("/orders", { ...common, user_uuid: uid })
           .then((res) => ({ ok: true, uid, res }))
           .catch((err) => ({
             ok: false,
@@ -549,7 +549,7 @@ export default function AddOrder() {
 
     setSubmitting(true);
     try {
-      const { data } = await api.put(`/api/orders/${encodeURIComponent(editingOrderId)}`, payload);
+      const { data } = await api.put(`/orders/${encodeURIComponent(editingOrderId)}`, payload);
       alert("Order updated.");
       // refresh screen from response and switch back to view mode
       setSelectedMealId(data.meal_id || "");

@@ -3,7 +3,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const isAdmin = !!localStorage.getItem("adminToken");
+  const isAdmin = !!localStorage.getItem("auth-token");
 
   const linkClass = ({ isActive }) =>
     [
@@ -15,7 +15,7 @@ export default function Navbar() {
     ].join(" ");
 
   const logout = () => {
-    localStorage.removeItem("adminToken");
+    localStorage.removeItem("auth-token");
     localStorage.removeItem("adminUser");
     navigate("/admin-login", { replace: true });
   };

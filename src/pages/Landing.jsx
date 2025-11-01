@@ -1,13 +1,13 @@
 // src/pages/Landing.jsx
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../lib/axios"; // admin axios (has admin token)
+import api from "../lib/axios"; // admin axios (has admin token)
 import { customerApi, getCustomerUuid } from "../lib/customerApi";
 
 // Helper: check if we have what looks like admin token in localStorage
 function getAdminToken() {
   return (
-    localStorage.getItem("adminToken") ||
+    localStorage.getItem("auth-token") ||
     localStorage.getItem("admin_token") ||
     ""
   );
@@ -23,7 +23,7 @@ export default function Landing() {
       if (adminT) {
         try {
           // verify admin session by calling /api/admin/me
-          await api.get("/api/admin/me", {
+          await api.get("/admin/me", {
             // api already attaches Authorization for you
             withCredentials: true,
           });
@@ -38,7 +38,7 @@ export default function Landing() {
       const uuid = getCustomerUuid();
       if (uuid) {
         try {
-          await customerApi.get("/customer-api/me");
+          await customerApi.get("/customer/me");
           navigate(`/customer/${uuid}`, { replace: true });
           return;
         } catch {

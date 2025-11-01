@@ -4,13 +4,13 @@ import axios from "axios";
 // get and set helper for customer identity on this browser
 export function getCustomerToken() {
   return (
-    localStorage.getItem("customerToken") || ""
+    localStorage.getItem("auth-token") || ""
   );
 }
 
 export function setCustomerSession(token, uuid) {
   if (token) {
-    localStorage.setItem("customerToken", token);
+    localStorage.setItem("auth-token", token);
   }
   if (uuid) {
     localStorage.setItem("customerUuid", uuid);
@@ -25,9 +25,9 @@ export function getCustomerUuid() {
 }
 
 // axios instance for CUSTOMER calls only.
-// baseURL "/api" is correct because nginx forwards /api/... to Node.
+// baseURL "" is correct because nginx forwards /api/... to Node.
 const customerApi = axios.create({
-  baseURL: "/api",
+  baseURL: "",
   withCredentials: false, // we are not using cookies for this flow right now
 });
 

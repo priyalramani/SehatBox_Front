@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import http from "../api/http.js"; // use the shared axios instance
+import api from "../lib/axios.js";
 
 export default function AdminRoute({ children }) {
   const [ok, setOk] = useState(false);
@@ -9,7 +9,7 @@ export default function AdminRoute({ children }) {
   useEffect(() => {
     // get admin token from localStorage (same logic you had)
     const token =
-      localStorage.getItem("adminToken") ||
+      localStorage.getItem("auth-token") ||
       localStorage.getItem("admin_token");
 
     // if there's no token at all, don't even bother calling backend
@@ -28,7 +28,7 @@ export default function AdminRoute({ children }) {
         //
         // Nginx proxies /api -> http://localhost:4000/
         // so backend sees:    /admin/me
-        const { data } = await http.get("/api/admin/me", {
+        const { data } = await api.get("/admin/me", {
           headers: { Authorization: `Bearer ${token}` },
           withCredentials: true,
         });

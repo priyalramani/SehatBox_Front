@@ -1,6 +1,6 @@
 // src/pages/MealPlanner.jsx
 import React, { useState, useEffect, useCallback } from "react";
-import { api } from "../lib/axios"; // 🔁 use same axios instance as Users/AddOrder
+import api from "../lib/axios"; // 🔁 use same axios instance as Users/AddOrder
 
 /* ---------------- date helpers ---------------- */
 function getTomorrowYMD() {
@@ -84,9 +84,9 @@ export default function MealPlanner() {
       setLoadingPlans(true);
 
       const [plansRes, mealsRes, dishesRes] = await Promise.all([
-        api.get("/api/meal-plan"),
-        api.get("/api/meals"),
-        api.get("/api/dishes"),
+        api.get("/meal-plan"),
+        api.get("/meals"),
+        api.get("/dishes"),
       ]);
 
       const planArr =
@@ -138,8 +138,8 @@ export default function MealPlanner() {
       setLoadingDishes(true);
 
       const [mealsRes, dishesRes] = await Promise.all([
-        api.get("/api/meals"),
-        api.get("/api/dishes"),
+        api.get("/meals"),
+        api.get("/dishes"),
       ]);
 
       const mealArr = Array.isArray(mealsRes.data) ? mealsRes.data : [];
@@ -179,8 +179,8 @@ export default function MealPlanner() {
       setLoadingDishes(true);
 
       const [mealsRes, dishesRes] = await Promise.all([
-        api.get("/api/meals"),
-        api.get("/api/dishes"),
+        api.get("/meals"),
+        api.get("/dishes"),
       ]);
 
       const mealArr = Array.isArray(mealsRes.data) ? mealsRes.data : [];
@@ -260,7 +260,7 @@ export default function MealPlanner() {
 
     try {
       setSaveStatus("saving");
-      await api.post("/api/meal-plan", body);
+      await api.post("/meal-plan", body);
       setSaveStatus("saved");
       setShowModal(false);
 

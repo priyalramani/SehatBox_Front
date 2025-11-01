@@ -1,10 +1,9 @@
-// src/api/dishes.js
-import { api } from "../lib/axios";
+import api from "../lib/axios";
 
 // grab admin token for all dish endpoints
 function adminHeaders() {
   const t =
-    localStorage.getItem("adminToken") ||
+    localStorage.getItem("auth-token") ||
     localStorage.getItem("admin_token");
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
@@ -37,8 +36,8 @@ export async function listDishes(q = "") {
   const params = q ? { q } : undefined;
   const res = await tryWithFallback(
     "get",
-    "/api/admin/dishes",
-    "/api/dishes",
+    "/admin/dishes",
+    "/dishes",
     {
       params,
       headers: adminHeaders(),
@@ -57,8 +56,8 @@ export async function createDish(payload) {
   // backend probably expects POST /api/admin/dishes
   const res = await tryWithFallback(
     "post",
-    "/api/admin/dishes",
-    "/api/dishes",
+    "/admin/dishes",
+    "/dishes",
     {
       data: payload,
       headers: adminHeaders(),
@@ -72,8 +71,8 @@ export async function createDish(payload) {
 export async function updateDish(idOrUuid, payload) {
   const res = await tryWithFallback(
     "put",
-    `/api/admin/dishes/${idOrUuid}`,
-    `/api/dishes/${idOrUuid}`,
+    `/admin/dishes/${idOrUuid}`,
+    `/dishes/${idOrUuid}`,
     {
       data: payload,
       headers: adminHeaders(),
@@ -87,8 +86,8 @@ export async function updateDish(idOrUuid, payload) {
 export async function deleteDish(idOrUuid) {
   const res = await tryWithFallback(
     "delete",
-    `/api/admin/dishes/${idOrUuid}`,
-    `/api/dishes/${idOrUuid}`,
+    `/admin/dishes/${idOrUuid}`,
+    `/dishes/${idOrUuid}`,
     {
       headers: adminHeaders(),
       withCredentials: true,
@@ -102,8 +101,8 @@ export async function patchDishStatus(idOrUuid, newStatus) {
   // some backends do PATCH /.../status with body { status: ... }
   const res = await tryWithFallback(
     "patch",
-    `/api/admin/dishes/${idOrUuid}/status`,
-    `/api/dishes/${idOrUuid}/status`,
+    `/admin/dishes/${idOrUuid}/status`,
+    `/dishes/${idOrUuid}/status`,
     {
       data: { status: newStatus },
       headers: adminHeaders(),

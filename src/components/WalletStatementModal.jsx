@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import api from "../lib/api";
+import api from "../lib/axios";
 
 // Formatters
 function fmtINR(n) {
@@ -61,7 +61,7 @@ export default function WalletStatementModal({
       setErr("");
       try {
         const { data } = await api.get(
-          `/api/wallet/users/${encodeURIComponent(userId)}/statement`
+          `/wallet/users/${encodeURIComponent(userId)}/statement`
         );
         const logs = Array.isArray(data?.logs) ? data.logs : [];
         setRows(logs);

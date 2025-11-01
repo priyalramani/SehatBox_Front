@@ -1,6 +1,6 @@
 // src/pages/Users.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { api } from "../lib/axios";
+import api from "../lib/axios";
 import WalletStatementModal from "../components/WalletStatementModal";
 
 /* -------------------------------- helpers -------------------------------- */
@@ -63,7 +63,7 @@ export default function Users() {
     setErr("");
     try {
       // /api/users is admin-protected. api already attaches admin auth header.
-      const { data } = await api.get("/api/users", {
+      const { data } = await api.get("/users", {
         params: q ? { q } : undefined,
       });
       const arr = Array.isArray(data) ? data : data?.users || [];
@@ -131,11 +131,11 @@ export default function Users() {
   const copyMagicLink = async (uid) => {
     try {
       // ask backend to generate 1-time-ish link
-      const { data } = await api.post("/api/admin/generate-magic-link", {
+      const { data } = await api.post("/customer/auth-link", {
         user_uuid: uid,
       });
 
-      const linkToShare = data.magic_link || profileUrl(uid);
+      const linkToShare = data.authLink || profileUrl(uid);
 
       try {
         // prefer native share on mobile
@@ -377,7 +377,7 @@ function AddBalanceModal({ user, onClose, onSaved }) {
     setSaving(true);
     setErr("");
     try {
-      await api.post(`/api/users/${user._id || user.user_uuid}/wallet/add`, {
+      await api.post(`/users/${user._id || user.user_uuid}/wallet/add`, {
         amount: val,
         date,
         narration: narration?.trim() || undefined,
@@ -568,9 +568,9 @@ function UserModal({ initial, onClose, onSaved }) {
       if (isEdit) {
         const id = idOf(initial);
         if (!id) throw new Error("User id missing");
-        await api.patch(`/api/users/${id}`, payload);
+        await api.patch(`/users/${id}`, payload);
       } else {
-        await api.post("/api/users", payload);
+        await api.post("/users", payload);
       }
       onSaved();
     } catch (e) {

@@ -1,7 +1,7 @@
-// src/lib/api.js
+// src/lib/axios.js
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API || "/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -25,7 +25,7 @@ api.interceptors.response.use(
       original._retry = true;
 
       if (!refreshing) {
-        refreshing = axios.post(`${API_BASE}/api/auth/refresh`, {}, { withCredentials: true })
+        refreshing = axios.post("/auth/refresh", {}, { withCredentials: true })
           .then(({ data }) => {
             localStorage.setItem("auth_token", data.accessToken);
             refreshing = null;

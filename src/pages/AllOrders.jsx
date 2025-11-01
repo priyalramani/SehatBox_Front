@@ -1,6 +1,6 @@
 // src/pages/AllOrders.jsx
 import React, { useMemo, useState, useEffect } from "react";
-import { api } from "../lib/axios";
+import api from "../lib/axios";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 

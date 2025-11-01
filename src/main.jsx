@@ -9,7 +9,7 @@ import App from "./App.jsx";
 import setAuthToken from "./lib/setAuthToken.js";
 
 // ⬇️ set global Authorization header at app start
-setAuthToken(localStorage.getItem("adminToken"));
+setAuthToken(localStorage.getItem("auth-token"));
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
