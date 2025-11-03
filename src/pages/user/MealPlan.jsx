@@ -9,7 +9,7 @@ import { useParams, useLocation, useNavigate } from "react-router-dom"
 import api from "../../lib/axios"
 
 // NEW: bring in the same session helpers we used in CustomerProfile
-import { customerApi, getCustomerToken, getCustomerUuid, setCustomerSession } from "../../lib/customerApi"
+import { customerApi, getCustomerUuid, setCustomerSession } from "../../lib/customerApi"
 
 const CANCELLED_STATUS_CODE = 3
 
@@ -351,7 +351,7 @@ export default function MealPlan() {
 					const onlyId = slotsWithDishes[0].meal_id
 					setSelectedMealId(onlyId)
 					setInitialMealChoiceOpen(false)
-					await checkExistingOrderForSelection(onlyId, activePlan)
+					await checkExistingOrderForSelection(onlyId, activePlan, dishMap)
 				} else if (slotsWithDishes.length > 1) {
 					setInitialMealChoiceOpen(true)
 				} else {
@@ -417,12 +417,13 @@ export default function MealPlan() {
 		})
 	}
 
-	const prefillCartFromOrder = (orderObj) => {
+	const prefillCartFromOrder = (orderObj, dishMap=allDishesMap) => {
 		if (!orderObj?.dish_details) return
+		console.log({ orderObj })
 		const newCart = {}
 		orderObj.dish_details.forEach((dd) => {
 			const dishId = dd.dish_uuid
-			const dishData = allDishesMap[dishId] || allDishesMap[String(dishId)]
+			const dishData = dishMap[dishId] || dishMap[String(dishId)]
 			if (!dishData) return
 			newCart[dishId] = {
 				dish: dishData,
@@ -430,6 +431,7 @@ export default function MealPlan() {
 				instructions: ""
 			}
 		})
+		console.log(newCart)
 		setCart(newCart)
 	}
 
@@ -441,7 +443,7 @@ export default function MealPlan() {
 	}
 
 	// Check if an order already exists for this user+meal+date
-	const checkExistingOrderForSelection = async (chosenMealId, planOverride) => {
+	const checkExistingOrderForSelection = async (chosenMealId, planOverride, dishMap=dishMap) => {
 		const planObj = planOverride || mealPlan
 		if (!currentUserUuid || !planObj?.date || !chosenMealId) {
 			setExistingOrder(null)
@@ -465,7 +467,7 @@ export default function MealPlan() {
 
 				if (!isCancelled) {
 					setExistingOrder(found)
-					prefillCartFromOrder(found)
+					prefillCartFromOrder(found, dishMap)
 					setCartLocked(true)
 				} else {
 					setExistingOrder(null)
@@ -484,6 +486,8 @@ export default function MealPlan() {
 		}
 	}
 
+	console.log({ cart, existingOrder })
+
 	const handleEditExisting = () => {
 		setCartLocked(false)
 	}
@@ -496,7 +500,7 @@ export default function MealPlan() {
 		if (!sure) return
 
 		try {
-			await api.post(`/admin/orders/${existingOrder._id}/cancel`, {
+			await api.post(`/orders/${existingOrder._id}/cancel`, {
 				refund: true,
 				reason: `Cancelled by Customer #${existingOrder.order_number || existingOrder._id}`
 			})

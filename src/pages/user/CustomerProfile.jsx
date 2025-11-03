@@ -72,10 +72,10 @@ export default function CustomerProfile() {
 	// nutrition info
 	const [nutritionRows, setNutritionRows] = useState([])
 	const [grandTotals, setGrandTotals] = useState({
-		protein_g: 0,
-		fat_g: 0,
-		carbs_g: 0,
-		kcal: 0
+		protein: 0,
+		fats: 0,
+		carbs: 0,
+		calories: 0
 	})
 
 	// wallet statement modal
@@ -155,10 +155,12 @@ export default function CustomerProfile() {
 				return
 			}
 
-			// fetch profile from /customer/me
-			const meRes = await api.get("/customer/me")
-			const me = meRes.data || null
-			setProfile(me)
+			// // fetch profile from /customer/me
+			if (!profile) {
+				const meRes = await api.get("/customer/me")
+				const me = meRes.data || null
+				setProfile(me)
+			}
 
 			// fetch nutrition from /customer/nutrition
 			const nutRes = await api.get("/customer/nutrition", {
@@ -171,11 +173,11 @@ export default function CustomerProfile() {
 			const nutData = nutRes.data || {}
 			setNutritionRows(Array.isArray(nutData.rows) ? nutData.rows : [])
 			setGrandTotals(
-				nutData.grand_totals || {
-					protein_g: 0,
-					fat_g: 0,
-					carbs_g: 0,
-					kcal: 0
+				nutData.totalMacros || {
+					protein: 0,
+					fats: 0,
+					carbs: 0,
+					calories: 0
 				}
 			)
 		} catch (err) {
@@ -341,7 +343,9 @@ export default function CustomerProfile() {
 						{nutritionRows.map((day, i) => (
 							<div key={i} className='border rounded p-3 bg-gray-50 space-y-2'>
 								{/* Day header */}
-								<div className='font-medium text-gray-800'>{day.date}</div>
+								<div className='font-medium text-gray-800'>
+									{new Date(day.for_date).toLocaleDateString()}
+								</div>
 
 								{/* Meal items */}
 								<div className='text-sm text-gray-700 space-y-2'>
@@ -350,14 +354,18 @@ export default function CustomerProfile() {
 											<div key={j} className='flex items-start justify-between'>
 												<div className='flex-1 pr-2'>
 													<div className='font-medium'>{item.dish_name || "Meal Item"}</div>
-													<div className='text-xs text-gray-500'>Qty: {item.qty ?? 1}</div>
+													<div className='text-xs text-gray-500'>
+														Qty: {item.quantity ?? 1}
+													</div>
 												</div>
 												<div className='text-right text-[11px] text-gray-600 leading-5'>
 													<div>
-														P {fmtNum(item.protein_g, 0)}g / F {fmtNum(item.fat_g, 0)}g
+														P {fmtNum(item.nutrition.protein, 0)}g / F{" "}
+														{fmtNum(item.nutrition.fats, 0)}g
 													</div>
 													<div>
-														C {fmtNum(item.carbs_g, 0)}g / {fmtNum(item.kcal, 0)} kcal
+														C {fmtNum(item.nutrition.carbs, 0)}g /{" "}
+														{fmtNum(item.nutrition.calories, 0)} kcal
 													</div>
 												</div>
 											</div>
@@ -365,18 +373,18 @@ export default function CustomerProfile() {
 								</div>
 
 								{/* Daily totals */}
-								{day.daily_totals && (
+								{day.totalMacros && (
 									<div className='text-[11px] text-gray-800 bg-white rounded border p-2 flex flex-wrap gap-4 justify-between'>
 										<div>
 											<div className='font-semibold text-gray-700'>Daily Totals</div>
-											<div>Protein: {fmtNum(day.daily_totals.protein_g, 0)} g</div>
-											<div>Fat: {fmtNum(day.daily_totals.fat_g, 0)} g</div>
-											<div>Carbs: {fmtNum(day.daily_totals.carbs_g, 0)} g</div>
+											<div>Protein: {fmtNum(day.totalMacros.protein, 0)} g</div>
+											<div>Fat: {fmtNum(day.totalMacros.fats, 0)} g</div>
+											<div>Carbs: {fmtNum(day.totalMacros.carbs, 0)} g</div>
 										</div>
 										<div className='text-right'>
 											<div>Calories</div>
 											<div className='font-semibold text-gray-900'>
-												{fmtNum(day.daily_totals.kcal, 0)} kcal
+												{fmtNum(day.totalMacros.calories, 0)} kcal
 											</div>
 										</div>
 									</div>
@@ -388,22 +396,22 @@ export default function CustomerProfile() {
 						<div className='border rounded p-3 bg-white text-sm text-gray-800 flex flex-wrap gap-6 justify-between'>
 							<div>
 								<div className='text-gray-500 text-[11px] uppercase'>Total Protein</div>
-								<div className='font-medium'>{fmtNum(grandTotals.protein_g, 0)} g</div>
+								<div className='font-medium'>{fmtNum(grandTotals.protein, 0)} g</div>
 							</div>
 
 							<div>
 								<div className='text-gray-500 text-[11px] uppercase'>Total Fat</div>
-								<div className='font-medium'>{fmtNum(grandTotals.fat_g, 0)} g</div>
+								<div className='font-medium'>{fmtNum(grandTotals.fats, 0)} g</div>
 							</div>
 
 							<div>
 								<div className='text-gray-500 text-[11px] uppercase'>Total Carbs</div>
-								<div className='font-medium'>{fmtNum(grandTotals.carbs_g, 0)} g</div>
+								<div className='font-medium'>{fmtNum(grandTotals.carbs, 0)} g</div>
 							</div>
 
 							<div>
 								<div className='text-gray-500 text-[11px] uppercase'>Total Calories</div>
-								<div className='font-medium'>{fmtNum(grandTotals.kcal, 0)} kcal</div>
+								<div className='font-medium'>{fmtNum(grandTotals.calories, 0)} kcal</div>
 							</div>
 						</div>
 					</div>
