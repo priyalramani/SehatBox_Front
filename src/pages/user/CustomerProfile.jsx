@@ -104,7 +104,7 @@ export default function CustomerProfile() {
 	useEffect(() => {
 		const maybeBootstrap = async () => {
 			const urlKey = query.get("key")
-			if (!urlKey) return // nothing to redeem
+			// if (!urlKey) return // nothing to redeem
 
 			try {
 				const body = {
@@ -117,6 +117,7 @@ export default function CustomerProfile() {
 
 				// data = { customer_token, user_uuid, expiresAt }
 				setCustomerSession(data.customer_token, data.user_uuid)
+				fetchAll()
 
 				// remove ?key=... from URL to avoid leaking link if user screenshots
 				const cleanPath = `/customer/${data.user_uuid}`
@@ -129,8 +130,8 @@ export default function CustomerProfile() {
 			}
 		}
 
-		maybeBootstrap()
-	}, [routeUuid, query])
+		if (!profile) maybeBootstrap()
+	}, [routeUuid, profile])
 
 	// 2) MAIN FETCH: profile + nutrition
 	const fetchAll = async () => {
@@ -232,6 +233,8 @@ export default function CustomerProfile() {
 			</div>
 		)
 	}
+
+	console.log(getCustomerToken(), profile)
 
 	if (!getCustomerToken() && !profile) {
 		return (

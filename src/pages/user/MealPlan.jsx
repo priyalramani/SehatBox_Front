@@ -443,7 +443,7 @@ export default function MealPlan() {
 	}
 
 	// Check if an order already exists for this user+meal+date
-	const checkExistingOrderForSelection = async (chosenMealId, planOverride, dishMap=dishMap) => {
+	const checkExistingOrderForSelection = async (chosenMealId, planOverride, dishMap=allDishesMap) => {
 		const planObj = planOverride || mealPlan
 		if (!currentUserUuid || !planObj?.date || !chosenMealId) {
 			setExistingOrder(null)
