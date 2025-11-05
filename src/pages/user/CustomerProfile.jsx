@@ -171,7 +171,13 @@ export default function CustomerProfile() {
 			})
 
 			const nutData = nutRes.data || {}
-			setNutritionRows(Array.isArray(nutData.rows) ? nutData.rows : [])
+
+			setNutritionRows(
+				(Array.isArray(nutData.rows) ? nutData.rows : [])?.map((i) => ({
+					...i,
+					for_date: new Date(i.for_date).toDateString()
+				}))
+			)
 			setGrandTotals(
 				nutData.totalMacros || {
 					protein: 0,
@@ -343,9 +349,7 @@ export default function CustomerProfile() {
 						{nutritionRows.map((day, i) => (
 							<div key={i} className='border rounded p-3 bg-gray-50 space-y-2'>
 								{/* Day header */}
-								<div className='font-medium text-gray-800'>
-									{new Date(day.for_date).toLocaleDateString()}
-								</div>
+								<div className='font-medium text-gray-800'>{day.for_date}</div>
 
 								{/* Meal items */}
 								<div className='text-sm text-gray-700 space-y-2'>
@@ -353,7 +357,7 @@ export default function CustomerProfile() {
 										day.items.map((item, j) => (
 											<div key={j} className='flex items-start justify-between'>
 												<div className='flex-1 pr-2'>
-													<div className='font-medium'>{item.dish_name || "Meal Item"}</div>
+													<div className='font-medium'>{item.dish_name}</div>
 													<div className='text-xs text-gray-500'>
 														Qty: {item.quantity ?? 1}
 													</div>

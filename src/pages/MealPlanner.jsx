@@ -276,7 +276,7 @@ export default function MealPlanner() {
   const handleActivate = async (planId) => {
     try {
       setActivateStatus("saving");
-      await api.patch(`/api/meal-plan/${planId}/activate`);
+      await api.patch(`/meal-plan/${planId}/activate`);
       setActivateStatus("saved");
 
       fetchMealPlans();
