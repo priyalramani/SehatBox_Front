@@ -9,7 +9,7 @@ import { useParams, useLocation, useNavigate } from "react-router-dom"
 import api from "../../lib/axios"
 
 // NEW: bring in the same session helpers we used in CustomerProfile
-import { customerApi, getCustomerUuid, setCustomerSession } from "../../lib/customerApi"
+import { getCustomerUuid, setCustomerSession } from "../../lib/customerApi"
 
 const CANCELLED_STATUS_CODE = 3
 
@@ -215,7 +215,7 @@ export default function MealPlan() {
 	useEffect(() => {
 		const maybeBootstrap = async () => {
 			const urlKey = query.get("key")
-			if (!urlKey) return
+			// if (!urlKey) return
 
 			try {
 				const body = {
@@ -224,7 +224,7 @@ export default function MealPlan() {
 				}
 
 				// Don't send stale Authorization here.
-				const { data } = await customerApi.post("/public/bootstrap-session", body, { headers: {} })
+				const { data } = await api.post("/customer/bootstrap-session", body)
 
 				// data = { customer_token, user_uuid, expiresAt }
 				setCustomerSession(data.customer_token, data.user_uuid)
