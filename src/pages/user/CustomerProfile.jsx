@@ -1,22 +1,8 @@
-// src/pages/user/CustomerProfile.jsx
-
 import { useEffect, useState, useMemo } from "react"
-import { useParams, useLocation, useNavigate, Link } from "react-router-dom"
-import { getCustomerToken, getCustomerUuid, setCustomerSession } from "../../lib/customerApi"
+import { Link, useOutletContext } from "react-router-dom"
 import WalletStatementModal from "../../components/WalletStatementModal"
 import api from "../../lib/axios"
 
-// helper: read query params like ?key=...
-function useQuery() {
-	return new URLSearchParams(useLocation().search)
-}
-
-// get admin token (used to detect if viewer is staff/admin)
-function getAdminToken() {
-	return localStorage.getItem("auth-token") || localStorage.getItem("admin_token") || ""
-}
-
-// format helpers
 function fmtNum(n, digits = 2) {
 	const num = Number(n || 0)
 	if (Number.isNaN(num)) return "0"
@@ -32,7 +18,6 @@ function getInitials(name, mobile) {
 		}
 		return ((parts[0][0] || "") + (parts[1][0] || "")).toUpperCase()
 	}
-	// fallback: last 2 digits of phone
 	if (mobile) {
 		const digits = String(mobile).replace(/[^\d]/g, "")
 		return digits.slice(-2)
@@ -56,193 +41,75 @@ function StatusChip({ statusNum }) {
 	)
 }
 
+const DEFAULT_TOTALS = {
+	protein: 0,
+	fats: 0,
+	carbs: 0,
+	calories: 0
+}
+
+const ISO_DATE = new Date().toISOString().slice(0, 10)
+
 export default function CustomerProfile() {
-	const { id: routeUuid } = useParams() // /customer/:id
-	const query = useQuery()
-	const navigate = useNavigate()
+	const { customerID, customerProfile } = useOutletContext()
 
-	// session/admin state
-	const [bootstrapError, setBootstrapError] = useState("")
 	const [loading, setLoading] = useState(true)
-	const [isAdminViewer, setIsAdminViewer] = useState(false)
+	const [errorMessage, setErrorMessage] = useState("")
 
-	// profile info
-	const [profile, setProfile] = useState(null)
-
-	// nutrition info
 	const [nutritionRows, setNutritionRows] = useState([])
-	const [grandTotals, setGrandTotals] = useState({
-		protein: 0,
-		fats: 0,
-		carbs: 0,
-		calories: 0
-	})
+	const [grandTotals, setGrandTotals] = useState(DEFAULT_TOTALS)
 
-	// wallet statement modal
 	const [stmtOpen, setStmtOpen] = useState(false)
 
-	// date range (default today)
-	const todayISO = new Date().toISOString().slice(0, 10)
-	const [fromDate, setFromDate] = useState(todayISO)
-	const [toDate, setToDate] = useState(todayISO)
+	const [fromDate, setFromDate] = useState(ISO_DATE)
+	const [toDate, setToDate] = useState(ISO_DATE)
 
-	// detect if the viewer is admin
-	useEffect(() => {
-		const token = getAdminToken()
-		if (token) {
-			setIsAdminViewer(true)
-		} else {
-			setIsAdminViewer(false)
-		}
-	}, [])
-
-	// 1) FIRST TIME VISIT FLOW (magic link onboarding)
-	// If URL has ?key=..., redeem it by calling /api/public/bootstrap-session
-	// This creates/stores a customer session token server-side and returns us
-	// { customer_token, user_uuid }. We save that in localStorage.
-	// Then we strip ?key=... from the URL so it doesn't leak.
-	useEffect(() => {
-		const maybeBootstrap = async () => {
-			const urlKey = query.get("key")
-			// if (!urlKey) return // nothing to redeem
-
-			try {
-				const body = {
-					user_uuid: routeUuid,
-					key: urlKey
-				}
-
-				// We explicitly pass empty headers to avoid sending any stale Authorization.
-				const { data } = await api.post("/customer/bootstrap-session", body)
-
-				// data = { customer_token, user_uuid, expiresAt }
-				setCustomerSession(data.customer_token, data.user_uuid)
-				fetchAll()
-
-				// remove ?key=... from URL to avoid leaking link if user screenshots
-				const cleanPath = `/customer/${data.user_uuid}`
-				window.history.replaceState({}, "", cleanPath)
-			} catch (err) {
-				console.error("bootstrap-session failed", err)
-				setBootstrapError(
-					err?.response?.data?.error || "Your secure link expired. Please request a new link from Sehat Box."
-				)
-			}
-		}
-
-		if (!profile) maybeBootstrap()
-	}, [routeUuid, profile])
-
-	// 2) MAIN FETCH: profile + nutrition
-	const fetchAll = async () => {
+	const fetchNutritionRows = async (from = fromDate, to = toDate) => {
 		setLoading(true)
-		setBootstrapError("")
+		setErrorMessage("")
 
 		try {
-			const token = getCustomerToken()
-			const storedUuid = getCustomerUuid()
-
-			// if no session token at all → can't load secure data
-			if (!token) {
-				setLoading(false)
-				return
-			}
-
-			// If we DO have a stored uuid + token, but the current URL uuid is different,
-			// redirect to the correct one (prevents customer A from typing /customer/B).
-			if (storedUuid && storedUuid !== routeUuid) {
-				navigate(`/customer/${storedUuid}`, { replace: true })
-				setLoading(false)
-				return
-			}
-
-			// // fetch profile from /customer/me
-			if (!profile) {
-				const meRes = await api.get("/customer/me")
-				const me = meRes.data || null
-				setProfile(me)
-			}
-
-			// fetch nutrition from /customer/nutrition
-			const nutRes = await api.get("/customer/nutrition", {
+			const { data } = await api.get("/customer/nutrition", {
 				params: {
-					from: fromDate,
-					to: toDate
+					from: from || ISO_DATE,
+					to: to || ISO_DATE
 				}
 			})
 
-			const nutData = nutRes.data || {}
-
+			setGrandTotals(data?.totalMacros || DEFAULT_TOTALS)
 			setNutritionRows(
-				(Array.isArray(nutData.rows) ? nutData.rows : [])?.map((i) => ({
+				data?.rows?.map((i) => ({
 					...i,
 					for_date: new Date(i.for_date).toDateString()
-				}))
-			)
-			setGrandTotals(
-				nutData.totalMacros || {
-					protein: 0,
-					fats: 0,
-					carbs: 0,
-					calories: 0
-				}
+				})) || []
 			)
 		} catch (err) {
-			console.error("fetchAll() error", err)
-			setBootstrapError(err?.response?.data?.error || "Session expired. Please request a new link.")
-		} finally {
-			setLoading(false)
+			setErrorMessage(err?.response?.data?.error || "An error occured. Please report this to support.")
 		}
+
+		setLoading(false)
 	}
 
-	// run fetchAll on mount (if we already have a session in localStorage)
 	useEffect(() => {
-		if (getCustomerToken() || getCustomerUuid()) {
-			fetchAll()
-		} else {
-			setLoading(false)
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [routeUuid])
+		fetchNutritionRows()
+	}, [])
 
 	// derived display values
 	const walletDisplay = useMemo(() => {
-		if (!profile) return "₹0.00"
-		const bal = Number(profile.wallet_balance || 0)
+		if (!customerProfile) return "₹0.00"
+		const bal = Number(customerProfile.wallet_balance || 0)
 		return `₹${bal.toFixed(2)}`
-	}, [profile])
+	}, [customerProfile])
 
-	const ordersCount = profile?.orders_count ?? 0
-	const nameDisplay = profile?.name || "Customer"
-	const mobileDisplay = profile?.mobile_number || ""
-	const statusNum = profile?.status
-	const uuidToShow = routeUuid // as in URL
-
-	const initials = useMemo(() => getInitials(nameDisplay, mobileDisplay), [nameDisplay, mobileDisplay])
+	const nameDisplay = customerProfile?.name || "Customer"
+	const initials = useMemo(
+		() => getInitials(nameDisplay, customerProfile?.mobile_number),
+		[nameDisplay, customerProfile?.mobile_number]
+	)
 
 	// Render states
 	if (loading) {
 		return <div className='p-4 text-gray-600 text-sm'>Loading your profile…</div>
-	}
-
-	if (bootstrapError && !getCustomerToken()) {
-		return (
-			<div className='p-4 max-w-md mx-auto text-center space-y-4'>
-				<div className='text-lg font-semibold text-red-600'>{bootstrapError}</div>
-				<div className='text-sm text-gray-600'>Please request a fresh secure link from Sehat Box.</div>
-			</div>
-		)
-	}
-
-	console.log(getCustomerToken(), profile)
-
-	if (!getCustomerToken() && !profile) {
-		return (
-			<div className='p-4 max-w-md mx-auto text-center space-y-4'>
-				<div className='text-lg font-semibold text-gray-800'>Secure link required</div>
-				<div className='text-sm text-gray-600'>Please request your personal access link from Sehat Box.</div>
-			</div>
-		)
 	}
 
 	return (
@@ -259,34 +126,24 @@ export default function CustomerProfile() {
 					<div className='flex-1 flex flex-col gap-2'>
 						<div className='flex flex-col leading-tight'>
 							<div className='text-lg font-semibold text-gray-900'>{nameDisplay}</div>
-							{mobileDisplay && <div className='text-sm text-gray-600'>+91 {mobileDisplay}</div>}
+							{customerProfile?.mobile_number && (
+								<div className='text-sm text-gray-600'>+91 {customerProfile?.mobile_number}</div>
+							)}
 						</div>
 
-						<div className='text-[11px] text-gray-500 break-all'>ID: {uuidToShow}</div>
+						<div className='text-[11px] text-gray-500 break-all'>ID: {customerID}</div>
 
-						{/* quick actions row: Meals, Wallet Statement (admin only) */}
 						<div className='flex flex-wrap gap-2 text-xs'>
 							{/* Meals button */}
 							<Link
-								to={`/meal/${uuidToShow}`}
+								to={`/meal/${customerID}`}
 								className='px-2 py-1 rounded border bg-white hover:bg-gray-50'
 							>
 								Meals
 							</Link>
-
-							{/* Wallet Statement button:
-                 - if admin logged in -> open modal
-                 - else -> show fallback alert
-              */}
 							<button
 								className='px-2 py-1 rounded border bg-white hover:bg-gray-50'
-								onClick={() => {
-									if (isAdminViewer) {
-										setStmtOpen(true)
-									} else {
-										alert("Please contact Sehat Box to view your full wallet statement.")
-									}
-								}}
+								onClick={() => setStmtOpen(true)}
 							>
 								Wallet Statement
 							</button>
@@ -298,7 +155,7 @@ export default function CustomerProfile() {
 						<div>
 							<div className='text-gray-500 text-[11px] uppercase'>Status</div>
 							<div className='flex justify-end'>
-								<StatusChip statusNum={statusNum} />
+								<StatusChip statusNum={customerProfile?.status} />
 							</div>
 						</div>
 
@@ -309,7 +166,7 @@ export default function CustomerProfile() {
 
 						<div>
 							<div className='text-gray-500 text-[11px] uppercase'>Orders</div>
-							<div className='text-base font-medium'>{ordersCount}</div>
+							<div className='text-base font-medium'>{customerProfile?.orders_count ?? 0}</div>
 						</div>
 					</div>
 				</div>
@@ -338,7 +195,10 @@ export default function CustomerProfile() {
 						/>
 					</div>
 					<div>
-						<button className='border rounded px-3 py-2 text-sm bg-black text-white' onClick={fetchAll}>
+						<button
+							className='border rounded px-3 py-2 text-sm bg-black text-white'
+							onClick={() => fetchNutritionRows()}
+						>
 							Refresh
 						</button>
 					</div>
@@ -424,15 +284,15 @@ export default function CustomerProfile() {
 					</div>
 				)}
 
-				{bootstrapError && <div className='text-center text-xs text-red-600'>{bootstrapError}</div>}
+				{errorMessage && <div className='text-center text-xs text-red-600'>{errorMessage}</div>}
 			</div>
 
 			{/* Wallet Statement Modal (ADMIN-ONLY live data) */}
-			{isAdminViewer && profile?.user_uuid && (
+			{customerProfile?.user_uuid && (
 				<WalletStatementModal
 					open={stmtOpen}
-					userId={profile.user_uuid || uuidToShow}
-					userTitle={profile.name || profile.mobile_number || uuidToShow}
+					userId={customerProfile.user_uuid || customerID}
+					userTitle={customerProfile.name || customerProfile.mobile_number || customerID}
 					onClose={() => setStmtOpen(false)}
 				/>
 			)}

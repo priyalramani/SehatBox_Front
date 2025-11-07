@@ -29,6 +29,7 @@ import AllOrders from "./pages/AllOrders";
 import MealPlanner from "./pages/MealPlanner";
 
 import Landing from "./pages/Landing.jsx"; // <-- NEW redirect logic
+import CustomerLayout from "./layouts/CustomerLayout.jsx";
 
 /* --------------------------- Layouts --------------------------- */
 
@@ -168,10 +169,9 @@ export default function App() {
             </Route>
 
             {/* Customer / mobile routes (no Navbar) */}
-            <Route element={<MobileLayout />}>
-              <Route path="/meal" element={<MealPlan />} />
+            <Route element={<CustomerLayout />}>
               <Route path="/meal/:user_uuid" element={<MealPlan />} />
-              <Route path="/customer/:id" element={<CustomerProfile />} />
+              <Route path="/customer/:user_uuid" element={<CustomerProfile />} />
             </Route>
 
             {/* Fallback 404 */}

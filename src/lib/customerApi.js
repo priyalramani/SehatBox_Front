@@ -14,6 +14,7 @@ export function setCustomerSession(token, uuid) {
   }
   if (uuid) {
     localStorage.setItem("customerUuid", uuid);
+    localStorage.setItem("User_uuid", uuid)
   }
 }
 

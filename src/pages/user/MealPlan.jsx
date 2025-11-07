@@ -1,19 +1,9 @@
-// src/pages/user/MealPlan.jsx
-
 import { useEffect, useState, useMemo } from "react"
-import { useParams, useLocation, useNavigate } from "react-router-dom"
-
-// NOTE: we keep using `api` for now because all meal/order routes
-// (/api/meal-plan, /api/orders, /api/dishes/:id, etc.) are still admin-style.
-// After we expose customer-safe versions on backend, we will convert these.
+import { Link, useOutletContext } from "react-router-dom"
 import api from "../../lib/axios"
-
-// NEW: bring in the same session helpers we used in CustomerProfile
-import { getCustomerUuid, setCustomerSession } from "../../lib/customerApi"
 
 const CANCELLED_STATUS_CODE = 3
 
-// meal slot names/times
 const MEAL_NAME_MAP = {
 	"689f6fcc5d6f90aa8ab14251": "Breakfast",
 	"68fc95b974853d663d125743": "Post Lunch"
@@ -24,34 +14,8 @@ const MEAL_TIME_MAP = {
 	"68fc95b974853d663d125743": "3:00 PM to 5:00 PM"
 }
 
-// small helper to read ?key=... from URL for magic link bootstrap
-function useQuery() {
-	return new URLSearchParams(useLocation().search)
-}
-
-// ----- COMPONENT START -----
 export default function MealPlan() {
-	// URL param
-	const { user_uuid: routeUserUuid } = useParams()
-	const query = useQuery()
-	const navigate = useNavigate()
-
-	// figure out which user we are looking at.
-	// we first prefer route param, then whatever was already stored (old logic had `localStorage.User_uuid`)
-	const currentUserUuid = useMemo(() => {
-		return (
-			routeUserUuid ||
-			localStorage.getItem("User_uuid") ||
-			getCustomerUuid() || // <- new: try the customer session uuid
-			null
-		)
-	}, [routeUserUuid])
-
-	// ----------------------------
-	// STATE (mostly unchanged)
-	// ----------------------------
-
-	const [userProfile, setUserProfile] = useState(null)
+	const { customerID, customerProfile, fetchProfile } = useOutletContext()
 
 	// meal plan / dishes / slots
 	const [mealPlan, setMealPlan] = useState(null)
@@ -61,17 +25,30 @@ export default function MealPlan() {
 	// which meal slot is selected
 	const [selectedMealId, setSelectedMealId] = useState("")
 
+	// text expand state for ingredients
+	const [expandedMap, setExpandedMap] = useState({})
+
+	const [showCartDrawer, setShowCartDrawer] = useState(false)
+	const [submitError, setSubmitError] = useState("")
+	const [submitting, setSubmitting] = useState(false)
+
+	// wallet balance and order state
+	const [existingOrder, setExistingOrder] = useState(null)
+	const [cartLocked, setCartLocked] = useState(false)
+
+	// misc UI states
+	const [showLockWarning, setShowLockWarning] = useState(false)
+	const [initialMealChoiceOpen, setInitialMealChoiceOpen] = useState(false)
+	const [mealDropdownOpen, setMealDropdownOpen] = useState(false)
+
+	// cart state
+	const [cart, setCart] = useState({})
+
 	// loading + errors
 	const [loading, setLoading] = useState(true)
 	const [err, setErr] = useState("")
 
-	// text expand state for ingredients
-	const [expandedMap, setExpandedMap] = useState({})
-
-	// cart state
-	const [cart, setCart] = useState({})
 	const cartItems = useMemo(() => Object.values(cart), [cart])
-
 	const cartCount = useMemo(() => cartItems.reduce((sum, line) => sum + (line.qty || 0), 0), [cartItems])
 
 	const cartTotalAmount = useMemo(() => {
@@ -81,52 +58,7 @@ export default function MealPlan() {
 		}, 0)
 	}, [cartItems])
 
-	const [showCartDrawer, setShowCartDrawer] = useState(false)
-	const [submitError, setSubmitError] = useState("")
-	const [submitting, setSubmitting] = useState(false)
-
-	// wallet balance and order state
-	const [walletBalance, setWalletBalance] = useState(null)
-	const [existingOrder, setExistingOrder] = useState(null)
-	const [cartLocked, setCartLocked] = useState(false)
-
-	// misc UI states
-	const [showLockWarning, setShowLockWarning] = useState(false)
-	const [initialMealChoiceOpen, setInitialMealChoiceOpen] = useState(false)
-	const [mealDropdownOpen, setMealDropdownOpen] = useState(false)
-
-	// NEW: track bootstrap error (magic link expired / session invalid)
-	const [bootstrapError, setBootstrapError] = useState("")
-
-	// derived booleans about cart/editing
 	const isViewingLockedExistingOrder = !!existingOrder && cartLocked
-	const isEditingExistingOrder = !!existingOrder && !cartLocked
-	const isCreatingNewOrder = !existingOrder && cartCount > 0 // keeping this for clarity (not directly used in render yet)
-
-	// utils
-	const fmtNumber = (n) =>
-		new Intl.NumberFormat("en-IN", {
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 2
-		}).format(Number(n || 0))
-
-	const getDishMacros = (dish) => ({
-		calories: dish.calories || dish.kcal || dish.energy || 0,
-		protein: dish.protein || 0,
-		carbs: dish.carbs || dish.carbohydrates || 0,
-		fat: dish.fats || dish.fat || 0
-	})
-
-	const getDishImage = (dish) => {
-		if (!dish) return null
-		if (Array.isArray(dish.image_url) && dish.image_url.length > 0) {
-			return dish.image_url[0] || null
-		}
-		if (typeof dish.image_url === "string" && dish.image_url.trim()) {
-			return dish.image_url
-		}
-		return null
-	}
 
 	const getIngredientsPreview = (dish) => {
 		const full = (dish?.ingredients || "").trim()
@@ -184,17 +116,12 @@ export default function MealPlan() {
 		return `For ${weekday}, ${dayNum} ${mon}`
 	}, [mealPlan])
 
-	const selectedMealLabel = useMemo(() => MEAL_NAME_MAP[selectedMealId] || selectedMealId || "", [selectedMealId])
-	const selectedMealTimeText = useMemo(() => MEAL_TIME_MAP[selectedMealId] || "", [selectedMealId])
-
-	// include user_title at the top bar
 	const displayNameShort = useMemo(() => {
-		const full =
-			userProfile?.user_title || userProfile?.title || userProfile?.name || userProfile?.customer_name || ""
+		const full = customerProfile?.name
 		if (!full) return "Profile"
 		if (full.length <= 15) return full
 		return full.slice(0, 15) + "…"
-	}, [userProfile])
+	}, [customerProfile])
 
 	// which dishes are visible for the currently selected meal slot
 	const visibleDishes = useMemo(() => {
@@ -209,76 +136,6 @@ export default function MealPlan() {
 		return arr
 	}, [mealSlots, selectedMealId, allDishesMap])
 
-	// ------------------------------------------------------------------
-	// (A) NEW STEP: Magic link bootstrap (same idea as CustomerProfile)
-	// ------------------------------------------------------------------
-	useEffect(() => {
-		const maybeBootstrap = async () => {
-			const urlKey = query.get("key")
-			// if (!urlKey) return
-
-			try {
-				const body = {
-					user_uuid: routeUserUuid,
-					key: urlKey
-				}
-
-				// Don't send stale Authorization here.
-				const { data } = await api.post("/customer/bootstrap-session", body)
-
-				// data = { customer_token, user_uuid, expiresAt }
-				setCustomerSession(data.customer_token, data.user_uuid)
-
-				// Clean ?key=... from URL so link can't leak
-				const cleanPath = `/meal/${data.user_uuid}`
-				window.history.replaceState({}, "", cleanPath)
-			} catch (err) {
-				console.error("bootstrap-session failed", err)
-				setBootstrapError(
-					err?.response?.data?.error || "Your secure link expired. Please request a new link from Sehat Box."
-				)
-			}
-		}
-
-		maybeBootstrap()
-	}, [routeUserUuid, query])
-
-	// ------------------------------------------------------------------
-	// (B) Fetch the user's basic profile + wallet for header
-	//     NOTE: still using `api` (admin-style) for now because there
-	//           is not yet a /customer/... endpoint for meal/ordering
-	// ------------------------------------------------------------------
-	useEffect(() => {
-		if (!currentUserUuid) return
-
-		api.get(`/users/${currentUserUuid}`)
-			.then((res) => {
-				setUserProfile(res.data || null)
-
-				if (res.data?.wallet_balance !== undefined) {
-					setWalletBalance(res.data.wallet_balance)
-				}
-
-				// store this uuid in localStorage for convenience
-				// (old code used "User_uuid", we keep that and we ALSO have customerUuid in setCustomerSession)
-				localStorage.setItem("User_uuid", currentUserUuid)
-
-				// SECURITY: if this browser has a stored session uuid (from magic link)
-				// but the URL /meal/:uuid does NOT match it → redirect to the right uuid.
-				// That stops user A from typing /meal/B.
-				const sessionUuid = getCustomerUuid()
-				if (sessionUuid && sessionUuid !== routeUserUuid) {
-					navigate(`/meal/${sessionUuid}`, { replace: true })
-				}
-			})
-			.catch(() => {
-				// ignore for now; we still want meal plan to attempt load
-			})
-	}, [currentUserUuid, routeUserUuid, navigate])
-
-	// ------------------------------------------------------------------
-	// (C) Fetch meal plan, dishes, and any existing order for today
-	// ------------------------------------------------------------------
 	useEffect(() => {
 		let alive = true
 
@@ -417,7 +274,7 @@ export default function MealPlan() {
 		})
 	}
 
-	const prefillCartFromOrder = (orderObj, dishMap=allDishesMap) => {
+	const prefillCartFromOrder = (orderObj, dishMap = allDishesMap) => {
 		if (!orderObj?.dish_details) return
 		console.log({ orderObj })
 		const newCart = {}
@@ -443,9 +300,9 @@ export default function MealPlan() {
 	}
 
 	// Check if an order already exists for this user+meal+date
-	const checkExistingOrderForSelection = async (chosenMealId, planOverride, dishMap=allDishesMap) => {
+	const checkExistingOrderForSelection = async (chosenMealId, planOverride, dishMap = allDishesMap) => {
 		const planObj = planOverride || mealPlan
-		if (!currentUserUuid || !planObj?.date || !chosenMealId) {
+		if (!customerID || !planObj?.date || !chosenMealId) {
 			setExistingOrder(null)
 			setCartLocked(false)
 			return
@@ -453,7 +310,7 @@ export default function MealPlan() {
 
 		try {
 			const params = {
-				user_uuid: currentUserUuid,
+				user_uuid: customerID,
 				meal_id: chosenMealId,
 				for_date: planObj.date
 			}
@@ -486,8 +343,6 @@ export default function MealPlan() {
 		}
 	}
 
-	console.log({ cart, existingOrder })
-
 	const handleEditExisting = () => {
 		setCartLocked(false)
 	}
@@ -511,16 +366,15 @@ export default function MealPlan() {
 			setExistingOrder(null)
 			setCartLocked(false)
 			setCart({})
+			await fetchProfile()
 		} catch (e) {
 			alert(e?.response?.data?.message || e?.response?.data?.error || "Failed to cancel order")
 		}
 	}
 
-	const canNavigateAwaySafely = isViewingLockedExistingOrder
-
 	const attemptSelectMealSlot = async (newMealId) => {
 		// if they are mid-edit or mid-cart, force them to finish first
-		if (!canNavigateAwaySafely && cartCount > 0 && newMealId !== selectedMealId) {
+		if (!isViewingLockedExistingOrder && cartCount > 0 && newMealId !== selectedMealId) {
 			setShowLockWarning(true)
 			return
 		}
@@ -530,20 +384,6 @@ export default function MealPlan() {
 		setMealDropdownOpen(false)
 
 		await checkExistingOrderForSelection(newMealId)
-	}
-
-	// navigate back to profile page (/customer/:uuid)
-	const handleGoProfile = () => {
-		// SECURITY: use whichever uuid this session actually belongs to
-		const sessionUuid = getCustomerUuid() || currentUserUuid
-		if (!sessionUuid) return
-
-		if (!canNavigateAwaySafely && cartCount > 0) {
-			setShowLockWarning(true)
-			return
-		}
-
-		window.location.href = `/customer/${sessionUuid}`
 	}
 
 	const openCartDrawer = () => setShowCartDrawer(true)
@@ -574,11 +414,10 @@ export default function MealPlan() {
 
 			let for_date = null
 			if (mealPlan?.date) {
-				// original behavior: date with fixed time to create a Date obj
-				for_date = new Date(`${mealPlan.date}T18:30:00.000Z`)
+				for_date = new Date(new Date(mealPlan.date).setHours(0, 0, 0, 0))
 			}
 
-			const placedByUuid = currentUserUuid || null
+			const placedByUuid = customerID || null
 
 			const body = {
 				dish_details,
@@ -617,6 +456,7 @@ export default function MealPlan() {
 
 			// refresh to reflect locked order state
 			await checkExistingOrderForSelection(selectedMealId)
+			await fetchProfile()
 		} catch (e) {
 			const msg =
 				e?.response?.data?.message || e?.response?.data?.error || e.message || "Failed to place/update order"
@@ -740,12 +580,8 @@ export default function MealPlan() {
 		)
 	}
 
-	// ----------------------------
-	// RENDER STATES
-	// ----------------------------
-
 	if (loading) {
-		return <div className='min-h-screen bg-white text-gray-700 flex items-center justify-center'>Loading…</div>
+		return <div className='min-h-screen flex items-center justify-center'>Loading…</div>
 	}
 
 	// nice "cooking" message when there is no active plan
@@ -755,8 +591,6 @@ export default function MealPlan() {
 				<div className='min-h-screen bg-white flex flex-col items-center justify-center px-4 text-center text-gray-700'>
 					<div className='text-lg font-semibold text-green-700 mb-2'>Your next meal plan is cooking! 🍲</div>
 					<div className='text-sm text-gray-600'>Please check back soon.</div>
-
-					{bootstrapError && <div className='text-xs text-red-600 mt-4 max-w-xs'>{bootstrapError}</div>}
 				</div>
 			)
 		}
@@ -765,8 +599,6 @@ export default function MealPlan() {
 			<div className='min-h-screen bg-white text-red-600 flex flex-col items-center justify-center px-4 text-center'>
 				<div className='text-lg font-semibold mb-2'>Something went wrong</div>
 				<div className='text-sm'>{err}</div>
-
-				{bootstrapError && <div className='text-xs text-red-600 mt-4 max-w-xs'>{bootstrapError}</div>}
 			</div>
 		)
 	}
@@ -788,9 +620,12 @@ export default function MealPlan() {
 					</button>
 				</div>
 
-				{walletBalance !== null && (
+				{customerProfile?.wallet_balance !== null && (
 					<div className='text-[13px] text-gray-700 mb-4'>
-						Wallet Balance: <span className='font-semibold text-gray-900'>₹{fmtNumber(walletBalance)}</span>
+						Wallet Balance:{" "}
+						<span className='font-semibold text-gray-900'>
+							₹{fmtNumber(customerProfile?.wallet_balance)}
+						</span>
 					</div>
 				)}
 
@@ -895,8 +730,6 @@ export default function MealPlan() {
 						</button>
 					</div>
 				)}
-
-				{bootstrapError && <div className='text-xs text-red-600 mt-4'>{bootstrapError}</div>}
 			</div>
 		</div>
 	) : null
@@ -944,8 +777,6 @@ export default function MealPlan() {
 				<div className='text-sm text-gray-700 leading-snug pr-6'>
 					Submit this order first, then create a new one.
 				</div>
-
-				{bootstrapError && <div className='text-xs text-red-600 mt-4'>{bootstrapError}</div>}
 			</div>
 		</div>
 	) : null
@@ -956,14 +787,14 @@ export default function MealPlan() {
 			<div className='max-w-xl mx-auto px-4 py-3 border-b border-green-800'>
 				<div className='flex items-start justify-between flex-wrap gap-3'>
 					<div className='flex flex-col text-white min-w-0'>
-						<button onClick={handleGoProfile} className='flex items-center gap-2 text-left' title='Profile'>
+						<Link to={`/customer/${customerID}`} className='flex items-center gap-2 text-left'>
 							<span className='w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-sm font-semibold border border-white/40 leading-none select-none'>
 								👤
 							</span>
 							<span className='text-lg font-semibold leading-tight text-white truncate max-w-[140px]'>
 								{displayNameShort}
 							</span>
-						</button>
+						</Link>
 
 						{headerDateText ? (
 							<div className='text-[13px] font-medium text-green-100 leading-tight mt-2'>
@@ -978,16 +809,16 @@ export default function MealPlan() {
 								onClick={() => setMealDropdownOpen((o) => !o)}
 								className='bg-white text-green-700 text-sm font-medium px-3 py-2 rounded-lg border border-green-700 flex items-center gap-2'
 							>
-								<span>{selectedMealLabel || "Select Meal"}</span>
+								<span>{MEAL_NAME_MAP[selectedMealId] || selectedMealId || "Select Meal"}</span>
 								<span className='text-green-700 text-sm leading-none'>▼</span>
 							</button>
 						) : null}
 
-						{selectedMealTimeText ? (
+						{!!MEAL_TIME_MAP[selectedMealId] && (
 							<div className='text-[12px] text-green-100 leading-tight mt-1 whitespace-nowrap'>
-								{selectedMealTimeText}
+								{MEAL_TIME_MAP[selectedMealId]}
 							</div>
-						) : null}
+						)}
 
 						{mealDropdownOpen ? (
 							<div className='absolute right-0 mt-2 bg-white border border-gray-300 rounded-md shadow-lg z-[60] w-44'>
@@ -1044,7 +875,7 @@ export default function MealPlan() {
 						</>
 					)}
 
-					{isEditingExistingOrder && (
+					{!!existingOrder && !cartLocked && (
 						<div className='flex flex-col gap-3'>
 							<div className='flex flex-col sm:flex-row gap-3'>
 								<button
@@ -1084,7 +915,7 @@ export default function MealPlan() {
 
 	// Finally render full page
 	return (
-		<div className='min-h-screen bg-white flex flex-col'>
+		<>
 			{headerBar}
 
 			<main className='flex-1 max-w-xl mx-auto w-full px-4 pt-2 pb-24 bg-white'>
@@ -1097,14 +928,36 @@ export default function MealPlan() {
 				) : (
 					visibleDishes.map((d) => <DishRow key={d._id || d.dish_uuid} dish={d} />)
 				)}
-
-				{bootstrapError && <div className='text-center text-xs text-red-600 mt-6'>{bootstrapError}</div>}
 			</main>
 
 			{bottomBar}
 			{showCartDrawer && cartDrawer}
 			{initialMealChoiceModal}
 			{lockWarningPopup}
-		</div>
+		</>
 	)
+}
+
+const fmtNumber = (n) =>
+	new Intl.NumberFormat("en-IN", {
+		minimumFractionDigits: 0,
+		maximumFractionDigits: 2
+	}).format(Number(n || 0))
+
+const getDishMacros = (dish) => ({
+	calories: dish.calories || dish.kcal || dish.energy || 0,
+	protein: dish.protein || 0,
+	carbs: dish.carbs || dish.carbohydrates || 0,
+	fat: dish.fats || dish.fat || 0
+})
+
+const getDishImage = (dish) => {
+	if (!dish) return null
+	if (Array.isArray(dish.image_url) && dish.image_url.length > 0) {
+		return dish.image_url[0] || null
+	}
+	if (typeof dish.image_url === "string" && dish.image_url.trim()) {
+		return dish.image_url
+	}
+	return null
 }
