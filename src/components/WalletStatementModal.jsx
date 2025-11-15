@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react"
 import api from "../lib/axios"
+import { MdModeEdit } from "react-icons/md"
+import classNames from "classnames"
+import { IoCheckbox, IoCheckmarkCircle } from "react-icons/io5"
+import { FcCheckmark } from "react-icons/fc"
+import { IoMdClose } from "react-icons/io"
+import { Spinner, SpinnerOverlay } from "./Spinner"
 
-// Formatters
 function fmtINR(n) {
 	const v = Number(n) || 0
-	return `₹${v.toFixed(2)}`
+	const sign = v >= 0 ? "" : "-"
+	return `${sign}₹${Math.abs(v).toFixed(2)}`
 }
 function fmtDate(d) {
 	const dt = new Date(d)
@@ -17,27 +23,12 @@ function getSortTime(row) {
 	return Number.isFinite(t) ? t : 0
 }
 
-// Figure out debit / credit.
-// We keep your logic: blue for money going out, green for incoming.
-function detectType(amount, remarksRaw) {
-	const amt = Number(amount ?? 0)
-	const remarks = String(remarksRaw || "").toLowerCase()
-
-	const isDebitText = /deduct|deduce|debit|charge|used|consum|for order|purchase/.test(remarks)
-	const isCreditText = /refund|cashback|added|recharge|credit|wallet balance added|top[-\s]?up/.test(remarks)
-
-	if (amt < 0) return "debit"
-	if (amt > 0 && isDebitText && !isCreditText) return "debit"
-	if (amt > 0 && isCreditText) return "credit"
-
-	return amt < 0 ? "debit" : "credit"
-}
-
 export default function WalletStatementModal({ userId, userTitle, onClose, open }) {
 	const [loading, setLoading] = useState(false)
 	const [err, setErr] = useState("")
 	const [rows, setRows] = useState([])
 	const [balance, setBalance] = useState(0)
+	const [inputState, setInputState] = useState()
 
 	useEffect(() => {
 		if (!open || !userId) return
@@ -64,6 +55,19 @@ export default function WalletStatementModal({ userId, userTitle, onClose, open 
 	}, [rows])
 
 	if (!open) return null
+
+	const handleLogUpdate = async () => {
+		setInputState((prev) => ({ ...prev, loading: true }))
+		try {
+			const { data } = await api.put("/wallet", inputState)
+			setRows((prev) => data.rows.concat(prev.slice(inputState?.rowIndex + 1)))
+			setBalance(data.balance)
+			setInputState()
+		} catch (error) {
+			console.error(error)
+			setInputState((prev) => ({ ...prev, loading: false }))
+		}
+	}
 
 	return (
 		<div className='fixed inset-0 z-50 bg-black/40 flex items-center justify-center'>
@@ -92,12 +96,13 @@ export default function WalletStatementModal({ userId, userTitle, onClose, open 
 
 					<div className='border rounded-lg overflow-auto'>
 						<table className='min-w-full text-sm'>
-							<thead className='bg-gray-100 sticky top-0'>
+							<thead className='bg-gray-200 sticky top-0'>
 								<tr>
 									<th className='text-left px-3 py-2 border-b'>Trans. Date</th>
-									<th className='text-left px-3 py-2 border-b'>Amount</th>
+									<th className='text-right px-3 py-2 border-b'>Amount</th>
+									<th className='py-2 border-b' />
 									<th className='text-left px-3 py-2 border-b'>Remarks</th>
-									<th className='text-left px-3 py-2 border-b'>Balance After</th>
+									<th className='text-right px-3 py-2 border-b'>Balance After</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -115,51 +120,94 @@ export default function WalletStatementModal({ userId, userTitle, onClose, open 
 									</tr>
 								) : (
 									sorted.map((r, idx) => {
-										const transDate =
-											r.transaction_date || r.tx_date || r.date || r.time || r.created_at
-
-										const amtNum = Number(r.transaction_amount ?? r.amount ?? 0)
-										const remarks = r.remarks || r.remark || r.description || r.note || ""
-
-										const kind = detectType(amtNum, remarks) // "debit" | "credit"
-										const absAmt = Math.abs(amtNum)
-
-										const narration = r.narration || r.note2 || ""
-
-										const balanceAfter =
-											r.balance_after_update ??
-											r.balance_after ??
-											r.running_balance ??
-											r.balance ??
-											null
-
+										const amtNum = +r.balance_after_update - +r.balance_before_update
 										return (
-											<tr key={idx} className='align-top odd:bg-white even:bg-gray-50'>
-												<td className='px-3 py-2 border-b'>{fmtDate(transDate)}</td>
+											<tr key={idx} className='odd:bg-white even:bg-gray-100'>
+												<td className='px-3 py-2 border-b'>{fmtDate(r.transaction_date)}</td>
 
-												{/* amount */}
-												<td
-													className={`px-3 py-2 border-b font-medium ${
-														kind === "debit" ? "text-blue-600" : "text-green-600"
-													}`}
-												>
-													{kind === "debit" ? `- ${fmtINR(absAmt)}` : fmtINR(absAmt)}
+												<td className='border-b w-46'>
+													<div className='flex items-center font-medium h-full'>
+														{inputState?.logId === r._id ? (
+															<input
+																autoFocus
+																type='number'
+																className='bg-gray-100 block ml-auto p-2 border w-full'
+																value={inputState?.amount}
+																onChange={(e) => {
+																	const v = e.target.value
+																	if (!v.toString().includes("e"))
+																		setInputState((p) => ({ ...p, amount: v }))
+																}}
+																onWheel={(e) => e.target.blur()}
+															/>
+														) : (
+															<span
+																className={classNames(
+																	"block w-full text-right px-3 py-2",
+																	amtNum < 0 ? "text-blue-600" : "text-green-600"
+																)}
+															>
+																{fmtINR(amtNum)}
+															</span>
+														)}
+													</div>
+												</td>
+
+												<td className='border-b'>
+													{amtNum > 0 && !r.remarks.includes("Refund") ? (
+														inputState?.logId === r._id ? (
+															inputState?.loading ? (
+																<Spinner className='mx-2' />
+															) : (
+																<div className='flex gap-2 px-2'>
+																	<button
+																		className='flex cursor-pointer text-xl'
+																		onClick={handleLogUpdate}
+																	>
+																		<FcCheckmark />
+																	</button>
+																	<button
+																		className='flex cursor-pointer text-xl'
+																		onClick={() => setInputState()}
+																	>
+																		<IoMdClose color='red' />
+																	</button>
+																</div>
+															)
+														) : (
+															<button
+																className='flex cursor-pointer text-base px-2'
+																onClick={() =>
+																	setInputState({
+																		logId: r._id,
+																		amount: amtNum,
+																		rowIndex: idx
+																	})
+																}
+															>
+																<MdModeEdit />
+															</button>
+														)
+													) : null}
 												</td>
 
 												<td className='px-3 py-2 border-b'>
 													<div>
-														{remarks ||
-															(kind === "debit" ? "Deduction" : "Wallet Balance Added")}
+														{r.remarks ||
+															(amtNum < 0 ? "Deduction" : "Wallet Balance Added")}
 													</div>
-													{narration && (
+
+													{r.narration && (
 														<div className='text-xs italic text-gray-600 mt-1'>
-															{narration}
+															{r.narration}
 														</div>
 													)}
 												</td>
 
-												<td className='px-3 py-2 border-b'>
-													{balanceAfter != null ? fmtINR(balanceAfter) : "-"}
+												<td className='px-3 py-2 border-b text-right'>
+													{typeof r.balance_after_update === "number"
+														? `${fmtINR(r.balance_after_update)}`
+														: "-"}
 												</td>
 											</tr>
 										)

@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
-import { Outlet, useNavigate, useSearchParams } from "react-router"
+import { Outlet, useNavigate } from "react-router"
 import api from "../lib/axios"
 import { getCustomerUuid, setCustomerSession } from "../lib/customerApi"
 
 export default function CustomerLayout() {
 	const { user_uuid } = useParams()
-	const [searchParams, setSearchParams] = useSearchParams()
 	const navigate = useNavigate()
 
 	const [customerProfile, setCustomerProfile] = useState()
@@ -21,22 +20,15 @@ export default function CustomerLayout() {
 	useEffect(() => {
 		const bootstrapSession = async () => {
 			setLoading(true)
-			const authKey = searchParams.get("key")
 			const currCustomerID = getCustomerUuid()
 
 			try {
 				if (!currCustomerID) {
 					const { data } = await api.post("/customer/bootstrap-session", {
 						user_uuid,
-						key: authKey
 					})
 
 					setCustomerSession(data.customer_token, data.user_uuid)
-					if (authKey)
-						setSearchParams((prev) => {
-							prev.delete("key")
-							return prev
-						})
 				} else if (currCustomerID !== user_uuid) {
 					const route = window.location.pathname.split("/")[1]
 					navigate(`/${route}/${currCustomerID}`)

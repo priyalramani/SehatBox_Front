@@ -60,16 +60,6 @@ export default function MealPlan() {
 
 	const isViewingLockedExistingOrder = !!existingOrder && cartLocked
 
-	const getIngredientsPreview = (dish) => {
-		const full = (dish?.ingredients || "").trim()
-		if (!full) return ""
-		const id = dish._id || dish.dish_uuid || ""
-		const expanded = !!expandedMap[id]
-		if (expanded) return full + " "
-		if (full.length <= 80) return full
-		return full.slice(0, 80).trim() + " ...more"
-	}
-
 	const shouldShowMoreToggle = (dish) => {
 		const full = (dish?.ingredients || "").trim()
 		if (!full) return false
@@ -79,9 +69,8 @@ export default function MealPlan() {
 	}
 
 	const toggleExpandIngredients = (dish) => {
-		const id = dish._id || dish.dish_uuid || ""
-		if (!id) return
-		setExpandedMap((prev) => ({ ...prev, [id]: !prev[id] }))
+		if (!dish._id) return
+		setExpandedMap((prev) => ({ ...prev, [dish._id]: !prev[dish._id] }))
 	}
 
 	const cartNutritionTotals = useMemo(() => {
@@ -526,9 +515,6 @@ export default function MealPlan() {
 		const price = dish.price || 0
 		const macros = getDishMacros(dish)
 
-		const ingText = getIngredientsPreview(dish)
-		const showToggle = shouldShowMoreToggle(dish)
-
 		return (
 			<div className='border-b border-gray-300 py-5'>
 				<div className='flex items-start justify-between gap-4'>
@@ -539,19 +525,21 @@ export default function MealPlan() {
 
 						<div className='mt-1 text-[16px] font-medium text-gray-900'>₹{fmtNumber(price)}</div>
 
-						{ingText ? (
-							<div className='mt-3 text-[14px] text-gray-700 leading-snug'>
-								{ingText}
-								{showToggle && (
-									<button
-										className='text-green-700 font-medium ml-1'
-										onClick={() => toggleExpandIngredients(dish)}
-									>
-										{expandedMap[dish._id || dish.dish_uuid] ? "...less" : ""}
-									</button>
+						{Boolean(dish?.ingredients) && (
+							<p
+								className='mt-3 text-[14px] text-gray-700'
+								onClick={() => (dish.ingredients.length > 80 ? toggleExpandIngredients(dish) : null)}
+							>
+								<span className='line-clamp-2 inline'>
+									{dish.ingredients.slice(0, expandedMap[dish._id] ? dish.ingredients.length : 80)}
+								</span>
+								{!expandedMap[dish._id] && dish.ingredients.length > 80 && (
+									<span>
+										...<b className='text-gray-600'>more</b>
+									</span>
 								)}
-							</div>
-						) : null}
+							</p>
+						)}
 					</div>
 
 					<div className='flex-shrink-0 flex flex-col items-center'>
@@ -849,7 +837,7 @@ export default function MealPlan() {
 	// bottom sticky bar (unchanged behavior)
 	const bottomBar =
 		cartCount > 0 || isViewingLockedExistingOrder ? (
-			<div className='fixed bottom-0 left-0 right-0 z-50 flex justify-center'>
+			<div className='sticky bg-white bottom-0 left-0 right-0 z-50 flex justify-center'>
 				<div className='w-full max-w-xl px-4 pb-4 space-y-2'>
 					{isViewingLockedExistingOrder && (
 						<>
