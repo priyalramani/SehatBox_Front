@@ -1,10 +1,10 @@
-// src/pages/AdminLogin.jsx
 import React, { useState } from "react"
 import setAuthToken from "../lib/setAuthToken"
 import api from "../lib/axios.js"
+import { setAuthSession } from "../lib/localState.js"
 
 export default function AdminLogin() {
-	const [email, setEmail] = useState("") // blank now ✅
+	const [email, setEmail] = useState("")
 	const [password, setPassword] = useState("")
 	const [err, setErr] = useState("")
 	const [loading, setLoading] = useState(false)
@@ -16,15 +16,11 @@ export default function AdminLogin() {
 
 		try {
 			const { data } = await api.post("/admin/login", { email, password })
-
 			if (!data?.success || !data?.token) throw new Error(data?.message || "Login failed")
 
-			// save + immediately apply token globally
-			localStorage.setItem("auth-token", data.token)
-			localStorage.setItem("adminUser", JSON.stringify(data.user))
+			setAuthSession(data.token, data.user?.uuid)
 			setAuthToken(data.token)
 
-			// redirect to admin home
 			window.location.href = "/"
 		} catch (e) {
 			setErr(e?.response?.data?.message || e?.message || "Login failed")

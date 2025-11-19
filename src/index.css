@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
 /* small reset */
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; padding: 0; }
+
+.asterisk::after {
+	content: "*";
+	color: red;
+}
+
+* {
+	box-sizing: border-box;
+}
+html,
+body,
+#root {
+	height: 100%;
+	margin: 0;
+	padding: 0;
+}

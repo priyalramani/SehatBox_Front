@@ -157,6 +157,7 @@ export default function AllOrders() {
   const [cancelOrder, setCancelOrder] = useState(null);
   const [refund, setRefund] = useState(true);
   const [reason, setReason] = useState("");
+  const [summaryOrderIDs, setSummaryOrderIDs] = useState([])
 
   // validate dd/mm/yy
   const validDates = useMemo(() => {
@@ -552,6 +553,15 @@ export default function AllOrders() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left">
+                <th className="pl-3 py-2 border-b">
+                  <input
+                    type="checkbox"
+                    disabled={!rows.length}
+                    checked={rows.length && summaryOrderIDs?.length === rows.length}
+                    onChange={e => e.target.checked ? setSummaryOrderIDs(rows.map(i => i._id)) : setSummaryOrderIDs([])}
+                  />
+                </th>
+                <th className="pl-3 py-2 border-b">#</th>
                 <th className="px-3 py-2 border-b">Order #</th>
                 <th className="px-3 py-2 border-b">Customer</th>
                 <th className="px-3 py-2 border-b">Mobile</th>
@@ -581,13 +591,28 @@ export default function AllOrders() {
                   </td>
                 </tr>
               ) : (
-                rows.map((o) => (
+                rows.map((o,idx) => (
                   <tr
                     key={o._id || o.id}
                     className={`${
                       o.status === 3 ? "bg-red-50" : "bg-white"
                     } hover:bg-gray-50`}
                   >
+                    <td className="pl-3 py-2 border-b">
+                      <input
+                        type="checkbox"
+                        checked={summaryOrderIDs?.includes(o._id)}
+                        onChange={e => e.target.checked
+                          ? setSummaryOrderIDs(p => p.concat([o._id]))
+                          : setSummaryOrderIDs(p => p.filter(_i => _i !== o._id))
+                        }
+                      />
+                    </td>
+
+                    <td className="pl-3 py-2 border-b">
+                      {idx+1}.
+                    </td>
+
                     <td className="px-3 py-2 border-b">
                       {o.order_number ||
                         o.number ||
@@ -708,6 +733,8 @@ export default function AllOrders() {
         </div>
       </div>
 
+      <Summary orderIDs={summaryOrderIDs} />
+
       {/* Cancel modal */}
       {cancelOpen && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
@@ -778,4 +805,76 @@ export default function AllOrders() {
       )}
     </section>
   );
+}
+
+let timerId
+const Summary = ({orderIDs}) => {
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState()
+
+  useEffect(() => {
+    timerId = setTimeout(async () => {
+      try {
+        const response = await api.post('/orders/summary', {orderIDs})
+        setData(response.data)
+      } catch (error) {
+        console.error(error)
+      }
+      setLoading(false)
+    }, 3 * 1000)
+
+    return () => {
+      if (timerId) clearTimeout(timerId)
+      setLoading(true)
+      setData([])
+    }
+  }, [orderIDs])
+  
+  return (
+    <div className="mt-4 bg-white rounded-xl shadow-sm border">
+
+      <div className={`flex items-center justify-between p-3 ${loading ? "" : "border-b"}`}>
+        <div className="text-sm text-gray-600">
+          {loading || data?.rows?.length
+            ? `${loading ? "Loading" : "Showing"} summary for ${orderIDs.length} order${orderIDs.length > 1 ? 's' : ''}.${loading ? ".." : ""}`
+            : "No results yet. Select few orders to see summary here."}
+        </div>
+      </div>
+
+      {data?.rows && <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-left">
+              <th className="pl-3 py-2 border-b">#</th>
+              <th className="px-3 py-2 border-b">Item</th>
+              <th className="px-3 py-2 border-b text-right">Quantity</th>
+              <th className="px-3 py-2 border-b text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              data?.rows?.map((i,idx) => (
+                <tr
+                  key={'summary:' + idx}
+                  className={`${i.status === 3 ? "bg-red-50" : "bg-white"} hover:bg-gray-50`}
+                >
+                  <td className="pl-3 py-2 border-b">{idx+1}.</td>
+                  <td className="px-3 py-2 border-b">{i.dish_title}</td>
+                  <td className="px-3 py-2 border-b text-right">{i.qty}</td>
+                  <td className="px-3 py-2 border-b text-right">₹{i.price.toFixed(2)}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="pl-3 py-2" colSpan={2}></td>
+              <td className="px-3 py-2 text-right">{data?.totalQty}</td>
+              <td className="px-3 py-2 text-right">₹{data?.totalPrice?.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>}
+    </div>
+  )
 }

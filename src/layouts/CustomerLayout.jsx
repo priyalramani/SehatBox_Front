@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 import { Outlet, useNavigate } from "react-router"
 import api from "../lib/axios"
-import { getCustomerUuid, setCustomerSession } from "../lib/customerApi"
+import { getUserID, setAuthSession } from "../lib/localState"
 
 export default function CustomerLayout() {
 	const { user_uuid } = useParams()
@@ -20,7 +20,7 @@ export default function CustomerLayout() {
 	useEffect(() => {
 		const bootstrapSession = async () => {
 			setLoading(true)
-			const currCustomerID = getCustomerUuid()
+			const currCustomerID = getUserID()
 
 			try {
 				if (!currCustomerID) {
@@ -28,7 +28,7 @@ export default function CustomerLayout() {
 						user_uuid,
 					})
 
-					setCustomerSession(data.customer_token, data.user_uuid)
+					setAuthSession(data.customer_token, data.user_uuid)
 				} else if (currCustomerID !== user_uuid) {
 					const route = window.location.pathname.split("/")[1]
 					navigate(`/${route}/${currCustomerID}`)

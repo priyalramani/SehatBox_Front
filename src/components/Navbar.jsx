@@ -1,5 +1,6 @@
 // src/components/Navbar.jsx
 import { Link, NavLink, useNavigate } from "react-router-dom";
+import { clearAuthSession } from "../lib/localState";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -15,8 +16,7 @@ export default function Navbar() {
     ].join(" ");
 
   const logout = () => {
-    localStorage.removeItem("auth-token");
-    localStorage.removeItem("adminUser");
+    clearAuthSession()
     navigate("/admin-login", { replace: true });
   };
 
@@ -54,6 +54,10 @@ export default function Navbar() {
 
           <NavLink to="/meal-planner" className={linkClass}>
             Meal Planner
+          </NavLink>
+          
+          <NavLink to="/cashflow-statement" className={linkClass}>
+            Cash Flow Statement
           </NavLink>
 
           {isAdmin ? (
