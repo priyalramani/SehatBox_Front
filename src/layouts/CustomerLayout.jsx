@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
-import { Outlet, useNavigate } from "react-router"
+import { Outlet } from "react-router"
 import api from "../lib/axios"
-import { getUserID, setAuthSession } from "../lib/localState"
+import { clearAuthSession, getUserID, setAuthSession } from "../lib/localState"
 
 export default function CustomerLayout() {
 	const { user_uuid } = useParams()
-	const navigate = useNavigate()
 
 	const [customerProfile, setCustomerProfile] = useState()
 	const [errorMessage, setErrorMessage] = useState()
@@ -23,24 +22,20 @@ export default function CustomerLayout() {
 			const currCustomerID = getUserID()
 
 			try {
-				if (!currCustomerID) {
+				if (!currCustomerID || currCustomerID !== user_uuid) {
 					const { data } = await api.post("/customer/bootstrap-session", {
-						user_uuid,
+						user_uuid
 					})
 
 					setAuthSession(data.customer_token, data.user_uuid)
-				} else if (currCustomerID !== user_uuid) {
-					const route = window.location.pathname.split("/")[1]
-					navigate(`/${route}/${currCustomerID}`)
 				}
 
 				const { data } = await api.get("/customer/me")
 				setCustomerProfile(data || null)
 			} catch (err) {
+				clearAuthSession()
 				console.error("bootstrap-session failed", err)
-				setErrorMessage(
-					err?.response?.data?.error || "Your secure link expired. Please request a new link from Sehat Box."
-				)
+				setErrorMessage(err?.response?.data?.error || "Something broke")
 			}
 			setLoading(false)
 		}
@@ -55,8 +50,10 @@ export default function CustomerLayout() {
 		if (errorMessage)
 			return (
 				<div className='p-4 max-w-md mx-auto text-center space-y-4'>
-					<div className='text-lg font-semibold text-red-600'>{errorMessage}</div>
-					<div className='text-sm text-gray-600'>Please request a fresh secure link from Sehat Box.</div>
+					<div className='text-lg font-bold text-red-600 uppercase'>{errorMessage}</div>
+					<div className='text-sm text-gray-600'>
+						Oops! Sorry for the inconvenience. Please refresh or contact customer support.
+					</div>
 				</div>
 			)
 

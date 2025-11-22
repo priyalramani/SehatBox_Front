@@ -1,5 +1,5 @@
-// src/pages/Dishes.jsx
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useReactToPrint } from "react-to-print";
 import {
   listDishes,
   createDish,
@@ -7,11 +7,13 @@ import {
   deleteDish,
   patchDishStatus,
 } from "../api/dishes";
+import api from "../lib/axios";
 
 export default function Dishes() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
+  const [recipeModal, setRecipeModal] = useState()
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -292,6 +294,12 @@ export default function Dishes() {
                     >
                       Delete
                     </button>
+                    <button
+                      className="px-2 py-1 border rounded"
+                      onClick={() => setRecipeModal(row)}
+                    >
+                      Recipe
+                    </button>
                   </td>
                 </tr>
               ))
@@ -462,6 +470,253 @@ export default function Dishes() {
           </div>
         </div>
       )}
+      {recipeModal && <DishRecipeModal close={() => setRecipeModal()} dish={recipeModal} />}
     </div>
   );
+}
+
+const units = [
+  { label: 'Unit', value: '' },
+  { label: 'Gram', value: 'g' },
+  { label: 'Kilogram', value: 'kg' },
+  { label: 'Milliliter', value: 'ml' },
+  { label: 'Liter', value: 'l' },
+  { label: 'Teaspoon', value: ' tsp' },
+  { label: 'Tablespoon', value: ' tbsp' },
+  { label: 'Cup', value: ' cup' },
+  { label: 'Ounce', value: 'oz' },
+  { label: 'Pound', value: 'lb' },
+]
+
+const DishRecipeModal = ({ close, dish }) => {
+  const componentRef = useRef()
+  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState([])
+  const [platesCount, setPlatesCount] = useState(1)
+  const [isEditable, setIsEditable] = useState(false)
+  
+  useEffect(() => {
+    if (!dish?._id) return
+    ;(async () => {
+      setLoading(true)
+      try {
+        const {data} = await api.get(`/recipe/${dish?._id}`)
+        if (!data?.items) return setIsEditable(true)
+        setItems(data.items)
+        setPlatesCount(data.plates_count)
+      } catch (error) {
+        console.error(error)
+      }
+      setLoading(false)
+    })()
+  }, [dish?._id])
+
+  const handlePrint = useReactToPrint({
+    contentRef: componentRef,
+    documentTitle: `Recipe for ${dish.title}`,
+    pageStyle: `@page { size: A4; margin: 10mm; }`,
+  });
+
+  const handleInput = (field, value, idx) => {
+    setItems(p =>
+      p.slice(0, idx).concat([{
+        ...p[idx],
+        [field]: value
+      }]).concat(p.slice(idx + 1, items.length))
+    )
+  }
+
+  const onSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      await api.post('/recipe', {
+        dish_uuid: dish?._id,
+        items
+      })
+      setIsEditable(false)
+    } catch (error) {
+      console.error(error)
+    }
+    setLoading(false)
+  }
+
+  const emptyMessage = (
+    <span className="italic text-stone-500 text-center block">
+      Wow such empty! Try adding a few items...
+    </span>
+  )
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center shadow">
+      <div className="bg-white rounded p-4 w-full max-w-3xl print:max-w-full" ref={componentRef}>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-lg mb-3">
+            Recipe for {dish?.title}
+            <span className="hidden print:inline"> ({platesCount} plate{platesCount > 1 ? 's' : ''})</span>
+          </h2>
+          <button
+            type="button"
+            className="font-bold px-1 cursor-pointer print:hidden"
+            onClick={close}
+          >
+            ✕
+          </button>
+        </div>
+
+        {
+          !isEditable
+          ? (
+            <>
+              <div className="h-[56vh] overflow-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b font-bold">
+                      <td className="py-1 px-2"></td>
+                      <td className="py-1 px-2">#</td>
+                      <td className="py-1 px-2 w-full">Item name</td>
+                      <td className="text-right py-1 px-2">Qty</td>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {
+                      items?.map((i, idx) => (
+                        !i.item_name
+                          ? null
+                          : (
+                            <React.Fragment key={'recipe-item:tr:'+idx}>
+                              <tr className="border-t border-stone-300">
+                                <td rowSpan={i.remarks ? 2 : 1} className="py-1 px-2">
+                                  <input type="checkbox" checked={false} className="hidden print:block" />
+                                </td>
+                                <td className="py-1 px-2">{idx+1}.</td>
+                                <td className="py-1 px-2">{i.item_name}</td>
+                                <td className="py-1 px-2 text-right whitespace-nowrap">{i.qty * platesCount}{i.unit}</td>
+                              </tr>
+                              {i.remarks && <tr>
+                                <td colSpan={3} className="py-1 px-2">
+                                  <span className="text-stone-500 text-sm italic">Remarks:</span> {i.remarks}</td>
+                              </tr>}
+                            </React.Fragment>
+                          )
+                      ))
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="print:hidden">
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 border rounded mt-4"
+                    onClick={() => setIsEditable(true)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 border rounded mt-4"
+                    onClick={handlePrint}
+                  >
+                    Print
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <form onSubmit={onSubmit}>
+              <div className="space-y-3 mb-4 h-[56vh] overflow-auto">
+                {items?.length
+                  ? items?.map((i, idx) => (
+                    <div key={'recipe-item:'+idx} className="flex">
+                      <span className="py-2 pr-3">{idx + 1}.</span>
+                      <div className="space-y-1 w-full">
+                        <div className="flex gap-1 items-center">
+                          <input
+                            required
+                            className="border w-full px-3 py-2 rounded"
+                            placeholder="* Item Name"
+                            autoFocus
+                            value={i.item_name || ""}
+                            onChange={(e) => handleInput("item_name", e.target.value, idx)}
+                          />
+                          <input
+                            required
+                            className="border px-3 py-2 rounded w-20 text-right"
+                            placeholder="* Qty"
+                            value={i.qty || ""}
+                            onChange={(e) => handleInput("qty", e.target.value, idx)}
+                          />
+                          <select
+                            className="border px-3 py-2 rounded"
+                            placeholder="Unit"
+                            value={i.unit}
+                            onChange={(e) => handleInput("unit", e.target.value, idx)}
+                          >
+                            {
+                              units.map(u => <option key={u.label} value={u.value}>{u.label}</option>)
+                            }
+                          </select>
+                          <button
+                            type="button"
+                            className="px-3 py-2 border rounded text-red-500 bg-red-100 font-bold"
+                            onClick={() => setItems(p =>[...p.slice(0, idx), ...p.slice(idx + 1)])}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <textarea
+                          className="border w-full px-3 py-2 rounded"
+                          rows={3}
+                          placeholder="Remarks"
+                          value={i.remarks || ""}
+                          onChange={(e) => handleInput("remarks", e.target.value, idx)}
+                        />
+                      </div>
+                    </div>
+                  )) : emptyMessage}
+              </div>
+              <div className="flex justify-between items-end">
+                <div className="flex gap-2 items-end">
+                  <label className="flex flex-col">
+                    <span className="text-sm text-stone-500">Plates</span>
+                    <input
+                      className="border px-2 py-1.5 rounded w-12 text-right"
+                      value={platesCount}
+                      onChange={(e) => setPlatesCount(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 border rounded"
+                    onClick={() => setItems(p => p.concat([{}]))}
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 border rounded"
+                    onClick={() => items?.length ? setIsEditable() : close()}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 rounded bg-black text-white disabled:opacity-50"
+                    disabled={!items.length}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </form>
+          )
+        }
+      </div>
+    </div>
+  )
 }
