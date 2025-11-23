@@ -12,21 +12,13 @@ const STATUS_LABELS = {
 };
 const ALL_STATUS_VALUES = ["0", "1", "2", "3"];
 
-// map meal_id -> label (keep these ids in sync with your DB)
-const MEAL_NAME_MAP = {
-  "689f6fcc5d6f90aa8ab14251": "Breakfast",
-  "68fc95b974853d663d125743": "Dinner",
-};
-
 // ---------- date utils ----------
 function maskDDMMYY(v) {
   const d = (v || "").replace(/\D+/g, "").slice(0, 6);
   if (d.length === 0) return "";
   if (d.length <= 2) return d + (d.length === 2 ? "/" : "");
   if (d.length <= 4)
-    return (
-      d.slice(0, 2) + "/" + d.slice(2) + (d.length === 4 ? "/" : "")
-    );
+    return d.slice(0, 2) + "/" + d.slice(2) + (d.length === 4 ? "/" : "");
   return d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4);
 }
 
@@ -47,19 +39,16 @@ function toDDMMYYYY(masked) {
   )}${String(yyyy)}`;
 }
 
-// "For Date" EXACTLY as stored (no +1)
+// "For Date" – now use LOCAL time, no UTC shift (-1 day bug fix)
 function fmtForDateNoShift(v) {
   if (!v) return "-";
   try {
     const raw = v.$date || v;
-    if (typeof raw !== "string") return "-";
-    const justDate = raw.split("T")[0]; // "2025-10-27"
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(justDate)) return "-";
-    const d = new Date(justDate + "T00:00:00Z");
+    const d = new Date(raw);
     if (isNaN(d.getTime())) return "-";
-    const dd = String(d.getUTCDate()).padStart(2, "0");
-    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const yyyy = d.getUTCFullYear();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
     return `${dd}/${mm}/${yyyy}`;
   } catch {
     return "-";
@@ -144,6 +133,10 @@ export default function AllOrders() {
   const [total, setTotal] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
 
+  // meals data (from Mongo "meals" collection)
+  const [meals, setMeals] = useState([]);
+  const [mealsMap, setMealsMap] = useState({});
+
   // paging
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
@@ -157,7 +150,47 @@ export default function AllOrders() {
   const [cancelOrder, setCancelOrder] = useState(null);
   const [refund, setRefund] = useState(true);
   const [reason, setReason] = useState("");
-  const [summaryOrderIDs, setSummaryOrderIDs] = useState([])
+  const [summaryOrderIDs, setSummaryOrderIDs] = useState([]);
+
+  // ---- load meals once on mount ----
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await api.get("/meals");
+        let arr = [];
+
+        if (Array.isArray(res.data?.data)) {
+          arr = res.data.data;
+        } else if (Array.isArray(res.data)) {
+          arr = res.data;
+        }
+
+        const map = {};
+        arr.forEach((m) => {
+          const id =
+            (m._id && (m._id.$oid || m._id)) ||
+            m.meal_id ||
+            m.meal_uuid;
+          if (!id) return;
+          const key = String(id);
+          map[key] = m;
+        });
+
+        if (!alive) return;
+        setMeals(arr);
+        setMealsMap(map);
+      } catch (e) {
+        console.error("Failed to load meals", e);
+        // we don't block orders page if this fails; fallback will show raw id
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // validate dd/mm/yy
   const validDates = useMemo(() => {
@@ -252,30 +285,16 @@ export default function AllOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  // on mount, fill placedFrom/placedTo with today string
-  useEffect(() => {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, "0");
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const yy = String(now.getFullYear()).slice(-2);
-    const todayMask = `${dd}/${mm}/${yy}`;
-    setPlacedFromMask(todayMask);
-    setPlacedToMask(todayMask);
-  }, []);
+  // NOTE: removed useEffect that was auto-filling placedFrom/placedTo with today
 
   function onReset() {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, "0");
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const yy = String(now.getFullYear()).slice(-2);
-    const todayMask = `${dd}/${mm}/${yy}`;
-
     setStatuses(ALL_STATUS_VALUES.slice());
     setMealFilter("ALL");
     setCustomerQ("");
 
-    setPlacedFromMask(todayMask);
-    setPlacedToMask(todayMask);
+    // keep all date fields EMPTY on reset
+    setPlacedFromMask("");
+    setPlacedToMask("");
     setForFromMask("");
     setForToMask("");
 
@@ -340,13 +359,17 @@ export default function AllOrders() {
     setStatuses(opts.length ? opts : []);
   }
 
-  // --- render meal cell w/ fallback ---
+  // --- render meal cell w/ backend-driven lookup ---
   function renderMealCell(orderRow) {
     // try multiple shapes to get the meal id
     const mid = getMealIdFromRow(orderRow);
 
-    if (mid && MEAL_NAME_MAP[mid]) {
-      return MEAL_NAME_MAP[mid];
+    if (mid) {
+      const key = String(mid);
+      const mealDoc = mealsMap[key];
+      if (mealDoc?.meal_title) {
+        return mealDoc.meal_title;
+      }
     }
 
     // If backend maybe already sent the title string on row.meal.meal_title
@@ -366,7 +389,7 @@ export default function AllOrders() {
         <h1 className="text-2xl font-semibold">All Orders</h1>
         <p className="text-sm text-gray-600">
           Choose filters, then click Search. Meal filter supports
-          Breakfast/Dinner etc. Placed Date defaults to today.
+          Breakfast/Dinner etc. Placed Date is optional.
         </p>
       </header>
 
@@ -404,13 +427,19 @@ export default function AllOrders() {
             className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring min-h-[44px]"
           >
             <option value="ALL">ALL</option>
-            {Object.entries(MEAL_NAME_MAP).map(
-              ([mealId, mealName]) => (
-                <option key={mealId} value={mealId}>
-                  {mealName}
+            {meals.map((m) => {
+              const id =
+                (m._id && (m._id.$oid || m._id)) ||
+                m.meal_id ||
+                m.meal_uuid;
+              if (!id) return null;
+              const key = String(id);
+              return (
+                <option key={key} value={key}>
+                  {m.meal_title || key}
                 </option>
-              )
-            )}
+              );
+            })}
           </select>
           <p className="text-[11px] text-gray-500 mt-1">
             Filter by meal slot. Default ALL.
@@ -557,8 +586,15 @@ export default function AllOrders() {
                   <input
                     type="checkbox"
                     disabled={!rows.length}
-                    checked={rows.length && summaryOrderIDs?.length === rows.length}
-                    onChange={e => e.target.checked ? setSummaryOrderIDs(rows.map(i => i._id)) : setSummaryOrderIDs([])}
+                    checked={
+                      rows.length &&
+                      summaryOrderIDs?.length === rows.length
+                    }
+                    onChange={(e) =>
+                      e.target.checked
+                        ? setSummaryOrderIDs(rows.map((i) => i._id))
+                        : setSummaryOrderIDs([])
+                    }
                   />
                 </th>
                 <th className="pl-3 py-2 border-b">#</th>
@@ -591,7 +627,7 @@ export default function AllOrders() {
                   </td>
                 </tr>
               ) : (
-                rows.map((o,idx) => (
+                rows.map((o, idx) => (
                   <tr
                     key={o._id || o.id}
                     className={`${
@@ -602,15 +638,22 @@ export default function AllOrders() {
                       <input
                         type="checkbox"
                         checked={summaryOrderIDs?.includes(o._id)}
-                        onChange={e => e.target.checked
-                          ? setSummaryOrderIDs(p => p.concat([o._id]))
-                          : setSummaryOrderIDs(p => p.filter(_i => _i !== o._id))
+                        onChange={(e) =>
+                          e.target.checked
+                            ? setSummaryOrderIDs((p) =>
+                                p.concat([o._id])
+                              )
+                            : setSummaryOrderIDs((p) =>
+                                p.filter(
+                                  (_i) => _i !== o._id
+                                )
+                              )
                         }
                       />
                     </td>
 
                     <td className="pl-3 py-2 border-b">
-                      {idx+1}.
+                      {idx + 1}.
                     </td>
 
                     <td className="px-3 py-2 border-b">
@@ -807,74 +850,102 @@ export default function AllOrders() {
   );
 }
 
-let timerId
-const Summary = ({orderIDs}) => {
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState()
+let timerId;
+const Summary = ({ orderIDs }) => {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState();
 
   useEffect(() => {
     timerId = setTimeout(async () => {
       try {
-        const response = await api.post('/orders/summary', {orderIDs})
-        setData(response.data)
+        const response = await api.post("/orders/summary", { orderIDs });
+        setData(response.data);
       } catch (error) {
-        console.error(error)
+        console.error(error);
       }
-      setLoading(false)
-    }, 3 * 1000)
+      setLoading(false);
+    }, 3 * 1000);
 
     return () => {
-      if (timerId) clearTimeout(timerId)
-      setLoading(true)
-      setData([])
-    }
-  }, [orderIDs])
-  
+      if (timerId) clearTimeout(timerId);
+      setLoading(true);
+      setData([]);
+    };
+  }, [orderIDs]);
+
   return (
     <div className="mt-4 bg-white rounded-xl shadow-sm border">
-
-      <div className={`flex items-center justify-between p-3 ${loading ? "" : "border-b"}`}>
+      <div
+        className={`flex items-center justify-between p-3 ${
+          loading ? "" : "border-b"
+        }`}
+      >
         <div className="text-sm text-gray-600">
           {loading || data?.rows?.length
-            ? `${loading ? "Loading" : "Showing"} summary for ${orderIDs.length} order${orderIDs.length > 1 ? 's' : ''}.${loading ? ".." : ""}`
+            ? `${loading ? "Loading" : "Showing"} summary for ${
+                orderIDs.length
+              } order${
+                orderIDs.length > 1 ? "s" : ""
+              }.${loading ? ".." : ""}`
             : "No results yet. Select few orders to see summary here."}
         </div>
       </div>
 
-      {data?.rows && <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="pl-3 py-2 border-b">#</th>
-              <th className="px-3 py-2 border-b">Item</th>
-              <th className="px-3 py-2 border-b text-right">Quantity</th>
-              <th className="px-3 py-2 border-b text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {
-              data?.rows?.map((i,idx) => (
+      {data?.rows && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="pl-3 py-2 border-b">#</th>
+                <th className="px-3 py-2 border-b">Item</th>
+                <th className="px-3 py-2 border-b text-right">
+                  Quantity
+                </th>
+                <th className="px-3 py-2 border-b text-right">
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data?.rows?.map((i, idx) => (
                 <tr
-                  key={'summary:' + idx}
-                  className={`${i.status === 3 ? "bg-red-50" : "bg-white"} hover:bg-gray-50`}
+                  key={"summary:" + idx}
+                  className={`${
+                    i.status === 3 ? "bg-red-50" : "bg-white"
+                  } hover:bg-gray-50`}
                 >
-                  <td className="pl-3 py-2 border-b">{idx+1}.</td>
-                  <td className="px-3 py-2 border-b">{i.dish_title}</td>
-                  <td className="px-3 py-2 border-b text-right">{i.qty}</td>
-                  <td className="px-3 py-2 border-b text-right">₹{i.price.toFixed(2)}</td>
+                  <td className="pl-3 py-2 border-b">
+                    {idx + 1}.
+                  </td>
+                  <td className="px-3 py-2 border-b">
+                    {i.dish_title}
+                  </td>
+                  <td className="px-3 py-2 border-b text-right">
+                    {i.qty}
+                  </td>
+                  <td className="px-3 py-2 border-b text-right">
+                    ₹{i.price.toFixed(2)}
+                  </td>
                 </tr>
-              ))
-            }
-          </tbody>
-          <tfoot>
-            <tr>
-              <td className="pl-3 py-2" colSpan={2}></td>
-              <td className="px-3 py-2 text-right">{data?.totalQty}</td>
-              <td className="px-3 py-2 text-right">₹{data?.totalPrice?.toFixed(2)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>}
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td
+                  className="pl-3 py-2"
+                  colSpan={2}
+                ></td>
+                <td className="px-3 py-2 text-right">
+                  {data?.totalQty}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  ₹{data?.totalPrice?.toFixed(2)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
-  )
-}
+  );
+};
