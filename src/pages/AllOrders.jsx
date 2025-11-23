@@ -15,7 +15,7 @@ const ALL_STATUS_VALUES = ["0", "1", "2", "3"];
 // map meal_id -> label (keep these ids in sync with your DB)
 const MEAL_NAME_MAP = {
   "689f6fcc5d6f90aa8ab14251": "Breakfast",
-  "68fc95b974853d663d125743": "Post Lunch",
+  "68fc95b974853d663d125743": "Dinner",
 };
 
 // ---------- date utils ----------
@@ -366,7 +366,7 @@ export default function AllOrders() {
         <h1 className="text-2xl font-semibold">All Orders</h1>
         <p className="text-sm text-gray-600">
           Choose filters, then click Search. Meal filter supports
-          Breakfast/Post Lunch etc. Placed Date defaults to today.
+          Breakfast/Dinner etc. Placed Date defaults to today.
         </p>
       </header>
 

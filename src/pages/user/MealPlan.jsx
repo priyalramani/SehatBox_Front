@@ -6,12 +6,12 @@ const CANCELLED_STATUS_CODE = 3
 
 const MEAL_NAME_MAP = {
 	"689f6fcc5d6f90aa8ab14251": "Breakfast",
-	"68fc95b974853d663d125743": "Post Lunch"
+	"68fc95b974853d663d125743": "Dinner"
 }
 
 const MEAL_TIME_MAP = {
-	"689f6fcc5d6f90aa8ab14251": "8:30 AM to 10:00 AM",
-	"68fc95b974853d663d125743": "3:00 PM to 5:00 PM"
+	"689f6fcc5d6f90aa8ab14251": "8:30 AM to 9:30 AM",
+	"68fc95b974853d663d125743": "7:30 PM to 8:30 PM"
 }
 
 export default function MealPlan() {
