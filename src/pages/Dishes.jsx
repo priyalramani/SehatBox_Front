@@ -503,7 +503,6 @@ const DishRecipeModal = ({ close, dish }) => {
         const {data} = await api.get(`/recipe/${dish?._id}`)
         if (!data?.items) return setIsEditable(true)
         setItems(data.items)
-        setPlatesCount(data.plates_count)
       } catch (error) {
         console.error(error)
       }
@@ -606,21 +605,31 @@ const DishRecipeModal = ({ close, dish }) => {
               </div>
 
               <div className="print:hidden">
-                <div className="flex gap-2 justify-end">
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 border rounded mt-4"
-                    onClick={() => setIsEditable(true)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 border rounded mt-4"
-                    onClick={handlePrint}
-                  >
-                    Print
-                  </button>
+                <div className="flex justify-between">
+                  <label className="flex flex-col">
+                    <span className="text-sm text-stone-500">Plates</span>
+                    <input
+                      className="border px-2 py-1.5 rounded w-12 text-right"
+                      value={platesCount}
+                      onChange={(e) => setPlatesCount(e.target.value)}
+                    />
+                  </label>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 border rounded mt-4"
+                      onClick={() => setIsEditable(true)}
+                      >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 border rounded mt-4"
+                      onClick={handlePrint}
+                      >
+                      Print
+                    </button>
+                  </div>
                 </div>
               </div>
             </>
@@ -679,23 +688,13 @@ const DishRecipeModal = ({ close, dish }) => {
                   )) : emptyMessage}
               </div>
               <div className="flex justify-between items-end">
-                <div className="flex gap-2 items-end">
-                  <label className="flex flex-col">
-                    <span className="text-sm text-stone-500">Plates</span>
-                    <input
-                      className="border px-2 py-1.5 rounded w-12 text-right"
-                      value={platesCount}
-                      onChange={(e) => setPlatesCount(e.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 border rounded"
-                    onClick={() => setItems(p => p.concat([{}]))}
-                  >
-                    + Add
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 border rounded"
+                  onClick={() => setItems(p => p.concat([{}]))}
+                >
+                  + Add
+                </button>
                 <div className="flex items-center justify-end gap-2">
                   <button
                     type="button"

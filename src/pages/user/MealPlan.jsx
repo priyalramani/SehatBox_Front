@@ -61,14 +61,6 @@ export default function MealPlan() {
   const isViewingLockedExistingOrder =
     !!existingOrder && cartLocked;
 
-  const shouldShowMoreToggle = (dish) => {
-    const full = (dish?.ingredients || "").trim();
-    if (!full) return false;
-    const id = dish._id || dish.dish_uuid || "";
-    if (expandedMap[id]) return true;
-    return full.length > 80;
-  };
-
   const toggleExpandIngredients = (dish) => {
     if (!dish._id) return;
     setExpandedMap((prev) => ({
@@ -130,7 +122,7 @@ export default function MealPlan() {
     );
     if (!slot) return [];
     const arr = [];
-    slot.dish_ids.forEach((dishId) => {
+    slot.dish_id.forEach((dishId) => {
       const dObj =
         allDishesMap[dishId] ||
         allDishesMap[String(dishId)];
@@ -155,122 +147,25 @@ export default function MealPlan() {
   };
 
   useEffect(() => {
-    let alive = true;
-
     (async () => {
       try {
         setLoading(true);
         setErr("");
 
-        // load meal-plan and meals together
-        const [mpRes, mealsRes] = await Promise.all([
-          api.get("/meal-plan"),
-          api.get("/meals"),
-        ]);
-
-        // normalize meals response
-        let mealsArr = [];
-        if (Array.isArray(mealsRes.data?.data)) {
-          mealsArr = mealsRes.data.data;
-        } else if (Array.isArray(mealsRes.data)) {
-          mealsArr = mealsRes.data;
-        }
-        const mealsMapLocal = {};
-        mealsArr.forEach((m) => {
-          const id =
-            (m._id && (m._id.$oid || m._id)) ||
-            m.meal_id ||
-            m.meal_uuid;
-          if (!id) return;
-          mealsMapLocal[String(id)] = m;
-        });
-
-        // normalize meal-plan response
-        let plansArray = [];
-        if (Array.isArray(mpRes.data?.data)) {
-          plansArray = mpRes.data.data;
-        } else if (Array.isArray(mpRes.data)) {
-          plansArray = mpRes.data;
-        }
-
-        // pick active plan
-        const activePlan =
-          plansArray.find(
-            (p) => Number(p.status) === 1
-          ) || null;
-
-        if (!alive) return;
-
-        setMealsMap(mealsMapLocal);
-
-        if (!activePlan) {
-          setMealPlan(null);
-          setMealSlots([]);
-          setSelectedMealId("");
-          setAllDishesMap({});
-          setErr("No active meal plan.");
-          setLoading(false);
-          return;
-        }
-
-        // gather meal slots for the active plan
-        const initialSlots = Array.isArray(
-          activePlan.plan
-        )
-          ? activePlan.plan.map((slot) => ({
-              meal_id: slot.meal_id,
-              dish_ids: Array.isArray(slot.dish_id)
-                ? slot.dish_id
-                : [],
-            }))
-          : [];
-
-        const slotsWithDishes = initialSlots.filter(
-          (s) => s.dish_ids.length > 0
-        );
-
-        // load dish details for each dish_id
-        const dishMap = {};
-        for (const slot of slotsWithDishes) {
-          for (const dishId of slot.dish_ids) {
-            try {
-              const dRes = await api.get(
-                `/dishes/${dishId}`
-              );
-              const dObj = dRes.data || {};
-              const finalId =
-                dObj._id || dishId;
-              dishMap[finalId] = {
-                ...dObj,
-                _id: finalId,
-                dish_uuid: finalId,
-              };
-            } catch (innerErr) {
-              console.error(
-                "Failed to load dish",
-                dishId,
-                innerErr
-              );
-            }
-          }
-        }
-
-        if (!alive) return;
-
+        const activePlanRes = await api.get("/meal-plan/active-plan")
+        const { dishes: dishMap, meals: mealMap, ...activePlan } = activePlanRes.data
+        const slotsWithDishes = activePlan.plan.filter(i => i?.dish_id?.length > 0)
+        
         setMealPlan(activePlan);
         setMealSlots(slotsWithDishes);
         setAllDishesMap(dishMap);
+        setMealsMap(mealMap);
 
-        // auto-select logic (unchanged)
         if (slotsWithDishes.length === 1) {
           const onlyId = slotsWithDishes[0].meal_id;
           setSelectedMealId(onlyId);
           setInitialMealChoiceOpen(false);
-          await checkExistingOrderForSelection(
-            onlyId,
-            activePlan,
-            dishMap
-          );
+          await checkExistingOrderForSelection(onlyId, activePlan, dishMap);
         } else if (slotsWithDishes.length > 1) {
           setInitialMealChoiceOpen(true);
         } else {
@@ -278,26 +173,14 @@ export default function MealPlan() {
           setInitialMealChoiceOpen(false);
         }
       } catch (e) {
-        console.error("MealPlan load error:", e);
-        if (!alive) return;
         setErr(
           e?.response?.data?.message ||
             e?.response?.data?.error ||
             "Unable to load meal plan."
         );
-        setMealPlan(null);
-        setMealSlots([]);
-        setSelectedMealId("");
-        setAllDishesMap({});
-      } finally {
-        alive && setLoading(false);
       }
+      setLoading(false);
     })();
-
-    return () => {
-      alive = false;
-    };
-    // we only run this once on mount for now
   }, []);
 
   // ------------------------------------------------------------------
@@ -349,7 +232,6 @@ export default function MealPlan() {
     dishMap = allDishesMap
   ) => {
     if (!orderObj?.dish_details) return;
-    console.log({ orderObj });
     const newCart = {};
     orderObj.dish_details.forEach((dd) => {
       const dishId = dd.dish_uuid;
@@ -1049,8 +931,7 @@ export default function MealPlan() {
             Choose a meal
           </div>
           <div className="text-sm text-gray-600 mb-4">
-            Which meal do you want to order right
-            now?
+            Which meal do you want to order right now?
           </div>
 
           <div className="space-y-3">

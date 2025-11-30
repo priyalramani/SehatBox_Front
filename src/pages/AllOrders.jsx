@@ -230,7 +230,7 @@ export default function AllOrders() {
       params.customer_q = customerQ.trim();
     }
 
-    // placed date range
+    // placed date range 
     const pf = toDDMMYYYY(placedFromMask);
     const pt = toDDMMYYYY(placedToMask);
     if (pf) params.placed_from = pf;
@@ -677,7 +677,7 @@ export default function AllOrders() {
                     </td>
 
                     <td className="px-3 py-2 border-b">
-                      {renderMealCell(o)}
+                      {o.meal_title}
                     </td>
 
                     <td className="px-3 py-2 border-b">
