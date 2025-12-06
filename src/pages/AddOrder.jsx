@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import api from "../lib/axios"
 import { useLocation, useNavigate } from "react-router-dom"
+import { MdOutlineHdrAuto } from "react-icons/md"
 
 const toNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 const money = (n) => `₹${toNum(n).toFixed(2)}`
@@ -191,7 +192,7 @@ function SearchableSelect({ value, onChange, options, placeholder = "-- Choose -
 }
 
 /* =================== Searchable MULTI Select (Customers) =================== */
-function SearchableMultiSelect({ values, onChange, options, placeholder = "-- Choose --", disabled = false }) {
+function SearchableMultiSelect({ values, onChange, options, placeholder = "-- Choose --", disabled = false, meals, setMeal }) {
 	const [open, setOpen] = useState(false)
 	const [query, setQuery] = useState("")
 	const rootRef = useRef(null)
@@ -232,6 +233,12 @@ function SearchableMultiSelect({ values, onChange, options, placeholder = "-- Ch
 		onChange([])
 	}
 
+	function selectAutoOrderUsers(meal_id) {
+		const customers = options.filter(i => i.autoOrder?.[meal_id]).map(i => i.value)
+		onChange(customers)
+		if (customers?.length) setMeal(meal_id)
+	}
+
 	return (
 		<div ref={rootRef} className='relative'>
 			<button
@@ -270,7 +277,19 @@ function SearchableMultiSelect({ values, onChange, options, placeholder = "-- Ch
 							Clear
 						</button>
 					</div>
-					<ul className='max-h-64 overflow-auto py-1'>
+					<div className="flex gap-2 px-3 mt-2.5 mb-2">
+						{meals?.map(m => (
+							<button
+								key={m.id}
+								className="bg-green-50 px-2 py-1 flex items-center text-sm gap-1 rounded-full border border-slate-300 focus:outline-2 hover:bg-green-100"
+								onClick={() => selectAutoOrderUsers(m.id)}
+							>
+								<MdOutlineHdrAuto className="text-lg" />
+								<span>{m.title}</span>
+							</button>
+						))}
+					</div>
+					<ul className='max-h-64 overflow-auto'>
 						{filtered.length === 0 ? (
 							<li className='px-3 py-2 text-sm text-gray-500'>No results</li>
 						) : (
@@ -355,7 +374,10 @@ export default function AddOrder() {
 						const mobile = String(u.mobile_number || u.mobile || u.phone || u.contact || "").trim()
 						const wallet = toNum(u.wallet_balance ?? u.wallet ?? 0)
 						const status = u.status
-						return { id, name, mobile, wallet, status }
+						const autoOrder = u.auto_order?.reduce((obj, i) =>
+							i.status ? ({...obj,[i.meal_id]: i.status}) : obj, {}
+						) || {}
+						return { id, name, mobile, wallet, status, autoOrder }
 					})
 					.filter((u) => !!u.id)
 				setUsers(normalized)
@@ -379,7 +401,7 @@ export default function AddOrder() {
 				? `+91 ${u.mobile}${walletPart}`
 				: `Unnamed${walletPart}`
 			const search = `${(u.name || "").toLowerCase()} ${(u.mobile || "").toLowerCase()}`
-			return { value: u.id, label, search, wallet: +u.wallet || 0 }
+			return { value: u.id, label, search, wallet: +u.wallet || 0, autoOrder: u.autoOrder }
 		})
 	}, [users])
 
@@ -697,7 +719,9 @@ export default function AddOrder() {
 						values={selectedUserIds}
 						onChange={setSelectedUserIds}
 						options={userOptions}
+						meals={meals}
 						placeholder={usersErr ? "Failed to load users" : "-- Choose customer(s) --"}
+						setMeal={v => setSelectedMealId(v)}
 						disabled={!!usersErr}
 					/>
 					{usersErr && <p className='text-xs text-red-600 mt-1'>Couldn’t load users: {usersErr}</p>}

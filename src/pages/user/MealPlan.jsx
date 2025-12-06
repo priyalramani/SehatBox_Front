@@ -658,45 +658,6 @@ export default function MealPlan() {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading…
-      </div>
-    );
-  }
-
-  // nice "cooking" message when there is no active plan
-  if (err || !mealPlan || !mealSlots.length) {
-    if (
-      err === "No active meal plan." ||
-      !mealPlan ||
-      !mealSlots.length
-    ) {
-      return (
-        <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 text-center text-gray-700">
-          <div className="text-lg font-semibold text-green-700 mb-2">
-            Your next meal plan is cooking! 🍲
-          </div>
-          <div className="text-sm text-gray-600">
-            Please check back soon.
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="min-h-screen bg-white text-red-600 flex flex-col items-center justify-center px-4 text-center">
-        <div className="text-lg font-semibold mb-2">
-          Something went wrong
-        </div>
-        <div className="text-sm">
-          {err}
-        </div>
-      </div>
-    );
-  }
-
   // CART DRAWER (unchanged layout)
   const cartDrawer = showCartDrawer ? (
     <div
@@ -1154,34 +1115,44 @@ export default function MealPlan() {
 
   // Finally render full page
   return (
-    <>
-      {headerBar}
+		<>
+			{headerBar}
+			{loading ? (
+				<div className='min-h-screen flex items-center justify-center'>Loading…</div>
+			) : err || !mealPlan || !mealSlots.length ? (
+				err === "No active meal plan." || !mealPlan || !mealSlots.length ? (
+					<div className='min-h-screen bg-white flex flex-col items-center justify-center px-4 text-center text-gray-700'>
+						<div className='text-lg font-semibold text-green-700 mb-2'>
+							Your next meal plan is cooking! 🍲
+						</div>
+						<div className='text-sm text-gray-600'>Please check back soon.</div>
+					</div>
+				) : (
+					<div className='min-h-screen bg-white text-red-600 flex flex-col items-center justify-center px-4 text-center'>
+						<div className='text-lg font-semibold mb-2'>Something went wrong</div>
+						<div className='text-sm'>{err}</div>
+					</div>
+				)
+			) : (
+				<main className='flex-1 max-w-xl mx-auto w-full px-4 pt-2 pb-24 bg-white'>
+					{!selectedMealId ? (
+						<div className='text-center text-gray-500 text-sm py-10'>Please choose a meal to continue.</div>
+					) : visibleDishes.length === 0 ? (
+						<div className='text-center text-gray-500 text-sm py-10'>
+							No dishes available for this meal slot.
+						</div>
+					) : (
+						visibleDishes.map((d) => <DishRow key={d._id || d.dish_uuid} dish={d} />)
+					)}
+				</main>
+			)}
 
-      <main className="flex-1 max-w-xl mx-auto w-full px-4 pt-2 pb-24 bg-white">
-        {!selectedMealId ? (
-          <div className="text-center text-gray-500 text-sm py-10">
-            Please choose a meal to continue.
-          </div>
-        ) : visibleDishes.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-10">
-            No dishes available for this meal slot.
-          </div>
-        ) : (
-          visibleDishes.map((d) => (
-            <DishRow
-              key={d._id || d.dish_uuid}
-              dish={d}
-            />
-          ))
-        )}
-      </main>
-
-      {bottomBar}
-      {showCartDrawer && cartDrawer}
-      {initialMealChoiceModal}
-      {lockWarningPopup}
-    </>
-  );
+			{bottomBar}
+			{showCartDrawer && cartDrawer}
+			{initialMealChoiceModal}
+			{lockWarningPopup}
+		</>
+  )
 }
 
 const fmtNumber = (n) =>

@@ -3,6 +3,13 @@ import React, { useEffect, useMemo, useState } from "react"
 import api from "../lib/axios"
 import WalletStatementModal from "../components/WalletStatementModal"
 import { dateTimeString } from "../lib/dateUtils"
+import { BiPencil } from "react-icons/bi"
+import { MdLink, MdOutlineHdrAuto, MdWallet } from "react-icons/md"
+import { LuWallet } from "react-icons/lu"
+import { TbInvoice } from "react-icons/tb"
+import { FaToggleOff, FaToggleOn } from "react-icons/fa6"
+import { IoCloseCircleOutline } from "react-icons/io5"
+import { Spinner } from "../components/Spinner"
 
 /* -------------------------------- helpers -------------------------------- */
 
@@ -42,10 +49,12 @@ export default function Users() {
 	const [editing, setEditing] = useState(null) // user doc or null
 	const [balanceUser, setBalanceUser] = useState(null)
 	const [err, setErr] = useState("")
+	const [autoOrderModalState, setAutoOrderModalState] = useState()
 
 	// statement modal state
 	const [stmtOpen, setStmtOpen] = useState(false)
 	const [stmtUser, setStmtUser] = useState({ id: "", title: "" })
+	const [meals, setMeals] = useState()
 
 	// Prevent background scroll when a modal is open
 	useEffect(() => {
@@ -76,6 +85,7 @@ export default function Users() {
 
 	useEffect(() => {
 		fetchUsers()
+		api.get("/meals").then(res => setMeals(res.data))
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
@@ -190,7 +200,7 @@ export default function Users() {
 				<table className='min-w-full border rounded-md'>
 					<thead className='bg-gray-50'>
 						<tr>
-							<th className='px-3 py-2 border text-left'>S.No.</th>
+							<th className='px-3 py-2 border text-left'>#</th>
 							<th className='px-3 py-2 border text-left'>Mobile No.</th>
 							<th className='px-3 py-2 border text-left'>Alt. Mobile</th>
 							<th className='px-3 py-2 border text-left'>Title</th>
@@ -228,7 +238,7 @@ export default function Users() {
 
 								return (
 									<tr key={uid || i}>
-										<td className='px-3 py-2 border'>{i + 1}</td>
+										<td className='px-3 py-2 border text-right'>{i + 1}</td>
 										<td className='px-3 py-2 border'>{u.mobile_number || "—"}</td>
 										<td className='px-3 py-2 border'>{u.alternate_mobile_number || "—"}</td>
 										<td className='px-3 py-2 border'>{u.user_title || "—"}</td>
@@ -236,11 +246,11 @@ export default function Users() {
 										<td className='px-3 py-2 border'>{type === 2 ? "—" : money(wallet)}</td>
 										<td className='px-3 py-2 border'>
 											{status === 1 ? (
-												<span className='text-green-700 bg-green-100 px-2 py-1 rounded'>
+												<span className='text-green-700 bg-green-100 px-2 py-1 rounded-full block w-full text-center'>
 													Active
 												</span>
 											) : (
-												<span className='text-gray-700 bg-gray-100 px-2 py-1 rounded'>
+												<span className='text-gray-700 bg-gray-100 px-2 py-1 rounded-full block w-full text-center'>
 													Inactive
 												</span>
 											)}
@@ -249,19 +259,21 @@ export default function Users() {
 											{type === 0 ? "admin" : type === 2 ? "delivery" : "customer"}
 										</td>
 										<td className='px-3 py-2 border'>{createdText}</td>
-										<td className='px-3 py-2 border'>
+										<td className='p-2 border'>
 											<div className='flex gap-2 flex-wrap'>
-												<button onClick={() => onEdit(u)} className='px-2 py-1 rounded border'>
-													Edit
+												<button onClick={() => onEdit(u)} className='p-1 rounded border'>
+													<BiPencil className="text-lg" />
+													{/* Edit */}
 												</button>
 
 												{uid && (
 													<button
 														onClick={() => customerLink(uid)}
-														className='px-2 py-1 rounded border bg-white hover:bg-gray-50'
+														className='p-1 rounded border bg-white hover:bg-gray-50'
 														title='Generate & copy secure link for this user'
 													>
-														Customer Link
+														<MdLink className="text-lg" />
+														{/* Customer Link */}
 													</button>
 												)}
 
@@ -269,20 +281,31 @@ export default function Users() {
 													<>
 														<button
 															onClick={() => onAddBalance(u)}
-															className='px-2 py-1 rounded border bg-green-50 hover:bg-green-100'
+															className='p-1 rounded border bg-green-50 hover:bg-green-100'
 															title='Add wallet balance'
 														>
-															Add Balance
+															<LuWallet className="text-lg" />
+															{/* Add Balance */}
 														</button>
 														<button
 															onClick={() => onStatement(u)}
-															className='px-2 py-1 rounded border bg-blue-50 hover:bg-blue-100'
+															className='p-1 rounded border bg-blue-50 hover:bg-blue-100'
 															title='View wallet statement'
 														>
-															Statement
+															<TbInvoice className="text-lg" />
 														</button>
 													</>
 												)}
+												<button
+													onClick={() => setAutoOrderModalState({
+														userId: u.user_uuid || u._id,
+														orderStatus: u.auto_order || []
+													})}
+													className='p-1 rounded border bg-blue-50 hover:bg-blue-100'
+													title='Open auto order modal'
+												>
+													<MdOutlineHdrAuto className="text-lg" />
+												</button>
 											</div>
 										</td>
 									</tr>
@@ -307,6 +330,20 @@ export default function Users() {
 					onClose={() => setStmtOpen(false)}
 				/>
 			)}
+
+			{autoOrderModalState && <AutoOrderModal
+				orderStatus={autoOrderModalState?.orderStatus}
+				userId={autoOrderModalState?.userId}
+				meals={meals}
+				onClose={(data) => {
+					setList(prev => prev.map(i =>
+						i._id === autoOrderModalState?.userId
+						? {...i,auto_order: data}
+						: i
+					))
+					setAutoOrderModalState()
+				}}
+			/>}
 		</div>
 	)
 }
@@ -731,6 +768,67 @@ function UserModal({ initial, onClose, onSaved }) {
 							</button>
 						</div>
 					</form>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function AutoOrderModal({ userId, meals, orderStatus, onClose }) {
+	const [err, setErr] = useState("")
+	const [autoMealStatus, setAutoMealStatus] = useState([])
+	const [loading, setLoading] = useState({})
+
+	useEffect(() => {
+		if (!meals) return
+		setAutoMealStatus(
+			meals.map(m => ({
+				meal_id: m._id,
+				meal_title: m.meal_title,
+				status: orderStatus?.find(i => i.meal_id === m._id)?.status || false
+			}))
+		)
+	}, [meals, orderStatus])
+
+	const onChange = async (mealId, status) => {
+		setLoading(p => ({...p,[mealId]: true}))
+		try {
+			await api.patch("/users/auto-order", { userId, mealId, status })
+			setAutoMealStatus(p => p.map(i => i.meal_id === mealId ? {...i, status}: i))
+		} catch (e) {
+			setErr(e?.response?.data?.message || "Failed to update status. Please try again or contact support.")
+		}
+		setLoading(p => ({...p,[mealId]: false}))
+	}
+
+	return (
+		<div className='fixed inset-0 bg-black/20 flex items-center justify-center p-4 z-50'>
+			<div className='w-full max-w-sm bg-white rounded-xl shadow p-4'>
+				<div className='flex items-center justify-between mb-2'>
+					<h3 className='text-lg font-semibold'>Auto Order</h3>
+					<button onClick={() => onClose(autoMealStatus)} className="text-2xl">
+						<IoCloseCircleOutline />
+					</button>
+				</div>
+
+				{err && <div className='text-sm text-red-600 mb-2'>{err}</div>}
+				<div className="space-y-3 mt-4">
+					{autoMealStatus?.map(i => (
+						<div key={i.meal_id} className="flex justify-between items-center gap-4">
+							<div className="w-full">
+								<span>{i.meal_title}</span>
+							</div>
+							<button onClick={() => onChange(i.meal_id, !i.status)}>
+								{
+									loading[i.meal_id]
+									? <Spinner size="md" />
+									: i.status
+										? <FaToggleOn className="text-2xl text-green-600" />
+										: <FaToggleOff className="text-2xl" />
+								}
+							</button>
+						</div>
+					))}
 				</div>
 			</div>
 		</div>

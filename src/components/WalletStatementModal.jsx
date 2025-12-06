@@ -15,7 +15,11 @@ function fmtINR(n) {
 function fmtDate(d) {
 	const dt = new Date(d)
 	if (isNaN(dt)) return "-"
-	return dt.toISOString().slice(0, 10).split("-").reverse().join("/")
+	return [
+		(dt.getDate()).toString().padStart(2, '0'),
+		(dt.getMonth() + 1).toString().padStart(2, '0'),
+		dt.getFullYear()
+	].join("/")
 }
 function getSortTime(row) {
 	const d = row.created_at || row.createdAt || row.transaction_date || row.date || row.tx_date || row.time
