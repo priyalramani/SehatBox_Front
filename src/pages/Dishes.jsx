@@ -63,7 +63,17 @@ export default function Dishes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => rows, [rows]);
+  const filtered = useMemo(() => {
+    if (!rows?.[0]) return []
+    if (!q) return rows
+    return rows.filter(i => {
+      return [
+        i.title,
+        i.ingredients,
+        i.status === 1 ? "Active" : "Inactive"
+      ].join(" ").toLowerCase().includes(q.toLowerCase())
+    })
+  }, [rows, q]);
 
   // ---------------------------------
   // form open/edit/new

@@ -627,6 +627,13 @@ export default function AddOrder() {
 	}
 
 	const isEditingExisting = !!editingOrderId
+	const [dishQuery, setDishQuery] = useState("")
+	const filteredDishes = useMemo(() => {
+		if (!dishQuery || !activeDishes?.[0]) return (activeDishes || [])
+		return activeDishes?.filter(i =>
+			[i.title, i.ingredients].join(" ").toLowerCase().includes(dishQuery.toLowerCase()) 
+		)
+	}, [dishQuery, activeDishes])
 
 	return (
 		<section className='space-y-4'>
@@ -741,13 +748,20 @@ export default function AddOrder() {
 						{dishesErr ? "Load failed" : `${activeDishes.length} found`}
 					</span>
 				</div>
+				<input
+					placeholder="Search..."
+					className='border rounded px-3 py-2 mb-2 w-full'
+					value={dishQuery}
+					onChange={e => setDishQuery(e.target.value)}
+					disabled={dishesErr || !activeDishes?.[0]}
+				/>
 				{dishesErr ? (
 					<p className='text-sm text-red-600'>Couldn’t load dishes: {dishesErr}</p>
-				) : activeDishes.length === 0 ? (
+				) : filteredDishes.length === 0 ? (
 					<p className='text-sm text-gray-500'>No active dishes.</p>
 				) : (
 					<div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-						{activeDishes.map((d) => {
+						{filteredDishes.map((d) => {
 							const q = qty[d.id] ?? ""
 							const ing = d.ingredients || "—"
 							const ingShort = String(ing).length > 120 ? String(ing).slice(0, 117) + "…" : ing

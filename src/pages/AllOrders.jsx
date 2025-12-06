@@ -221,7 +221,6 @@ export default function AllOrders() {
     // meal filter
     if (mealFilter !== "ALL") {
       // send both keys just in case
-      params.meal_id = mealFilter;
       params.mealId = mealFilter;
     }
 
